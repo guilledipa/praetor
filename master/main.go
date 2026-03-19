@@ -12,12 +12,14 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/guilledipa/praetor/master/catalog"
+	"github.com/guilledipa/praetor/pkg/broker"
+	"github.com/guilledipa/praetor/pkg/broker/nats"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
@@ -147,70 +149,94 @@ func (s *server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 	}, nil
 }
 
-func setupNATS(cfg MasterConfig) (*nats.Conn, nats.JetStreamContext, error) {
+// ReportState implements master.ConfigurationMasterServer
+func (s *server) ReportState(ctx context.Context, in *pb.ReportStateRequest) (*pb.ReportStateResponse, error) {
+	nodeID := in.GetNodeId()
+	isCompliant := in.GetIsCompliant()
+	
+	logger.Info("Received state report", "node_id", nodeID, "is_compliant", isCompliant, "resources_checked", len(in.GetResources()))
+	for _, req := range in.GetResources() {
+		logger.Debug("Resource run", "node_id", nodeID, "type", req.GetType(), "id", req.GetId(), "compliant", req.GetCompliant(), "message", req.GetMessage())
+	}
+	
+	return &pb.ReportStateResponse{Acknowledged: true}, nil
+}
+
+var activeAgents sync.Map
+
+func handleAgentRegistration(msg broker.Message) {
+	agentID := string(msg.Data())
+	if agentID != "" {
+		activeAgents.Store(agentID, time.Now())
+		logger.Info("Agent registered dynamically", "node_id", agentID)
+	}
+}
+
+func setupBroker(cfg MasterConfig) (broker.Broker, error) {
 	cert, err := tls.LoadX509KeyPair(cfg.NatsClientCert, cfg.NatsClientKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load NATS client key pair: %w", err)
+		return nil, fmt.Errorf("failed to load client key pair: %w", err)
 	}
 
 	caCert, err := os.ReadFile(cfg.NatsRootCA)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read NATS root CA file: %w", err)
+		return nil, fmt.Errorf("failed to read root CA file: %w", err)
 	}
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	natsTLSConfig := &tls.Config{
+	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      caCertPool,
 		MinVersion:   tls.VersionTLS12,
 	}
 
-	opts := []nats.Option{
-		nats.Secure(natsTLSConfig),
-		nats.Name("Praetor Master"),
-	}
-	nc, err := nats.Connect(cfg.NatsURL, opts...)
+	b := nats.NewBroker()
+	err = b.Connect("Praetor Master", cfg.NatsURL, tlsConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to NATS: %w", err)
+		return nil, err
 	}
 
-	js, err := nc.JetStream()
+	// Subscribe to agent registrations
+	err = b.Subscribe("agent.register", handleAgentRegistration)
 	if err != nil {
-		nc.Close()
-		return nil, nil, fmt.Errorf("failed to get JetStream context: %w", err)
+		logger.Error("Failed to subscribe to agent.register", "error", err)
 	}
 
 	// Ensure the AGENT_TRIGGERS stream exists
-	_, err = js.AddStream(&nats.StreamConfig{
-		Name:     "AGENT_TRIGGERS",
-		Subjects: []string{"agent.trigger.>"},
-	})
+	err = b.EnsureStream("AGENT_TRIGGERS", []string{"agent.trigger.>"})
 	if err != nil {
-		if err != nats.ErrStreamNameAlreadyInUse {
-			nc.Close()
-			return nil, nil, fmt.Errorf("failed to add AGENT_TRIGGERS stream: %w", err)
-		}
+		b.Close()
+		return nil, fmt.Errorf("failed to add AGENT_TRIGGERS stream: %w", err)
 	}
-	return nc, js, nil
+	return b, nil
 }
 
-func startTriggerPublisher(js nats.JetStreamContext, cfg MasterConfig) {
+func startTriggerPublisher(b broker.Broker, cfg MasterConfig) {
 	ticker := time.NewTicker(cfg.TriggerInterval)
 	defer ticker.Stop()
 
-	subject := fmt.Sprintf("agent.trigger.getCatalog.%s", cfg.TargetNodeID)
+	// Seed with configured target if you want it to still trigger agent1 statically safely
+	if cfg.TargetNodeID != "" {
+		activeAgents.Store(cfg.TargetNodeID, time.Now())
+	}
 
 	for {
 		select {
 		case <-ticker.C:
-			logger.Info("Publishing catalog trigger", "subject", subject)
-			_, err := js.Publish(subject, nil)
-			if err != nil {
-				logger.Error("Failed to publish trigger message", "subject", subject, "error", err)
-			} else {
-				logger.Info("Successfully published trigger", "subject", subject)
-			}
+			count := 0
+			activeAgents.Range(func(key, value interface{}) bool {
+				agentID := key.(string)
+				subject := fmt.Sprintf("agent.trigger.getCatalog.%s", agentID)
+				logger.Debug("Publishing catalog trigger", "subject", subject)
+				err := b.PublishStream(subject, nil)
+				if err != nil {
+					logger.Error("Failed to publish trigger message", "subject", subject, "error", err)
+				}
+				count++
+				return true
+			})
+			logger.Info("Published triggers completed", "agents_triggered", count)
 		}
 	}
 }
@@ -232,17 +258,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup NATS connection and JetStream
-	nc, js, err := setupNATS(masterCfg)
+	// Setup message broker
+	b, err := setupBroker(masterCfg)
 	if err != nil {
-		logger.Error("Failed to setup NATS", "error", err)
+		logger.Error("Failed to setup message broker", "error", err)
 		os.Exit(1)
 	}
-	defer nc.Close()
-	logger.Info("Connected to NATS server and got JetStream context")
+	defer b.Close()
+	logger.Info("Connected to message broker successfully")
 
 	// Start the periodic trigger publisher
-	go startTriggerPublisher(js, masterCfg)
+	go startTriggerPublisher(b, masterCfg)
 
 	// Load server certificate and key for gRPC
 	serverCert, err := tls.LoadX509KeyPair("certs/server.crt", "certs/server.key")

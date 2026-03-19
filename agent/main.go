@@ -94,6 +94,13 @@ func main() {
 	defer nc.Close()
 	logger.Info("Connected to NATS server")
 
+	// Register with the Master
+	if err := nc.Publish("agent.register", []byte(cfg.NodeID)); err != nil {
+		logger.Error("Failed to publish registration message", "error", err)
+	} else {
+		logger.Info("Registration message published.")
+	}
+
 	// Get JetStream context
 	js, err := nc.JetStream()
 	if err != nil {
@@ -271,12 +278,21 @@ func fetchAndApplyCatalog(cfg Config, masterClient masterpb.ConfigurationMasterC
 	}
 		logger.Info("Successfully fetched and parsed catalog", "resource_count", len(catalog.Spec.Resources))
 	
+		allCompliant := true
+		var reports []*masterpb.ResourceReport
+
 		for _, resData := range catalog.Spec.Resources {
 			var typeMeta struct {
 				Kind string `json:"kind"`
 			}
 			if err := json.Unmarshal(resData, &typeMeta); err != nil {
 				logger.Error("Error unmarshalling resource kind", "error", err)
+				reports = append(reports, &masterpb.ResourceReport{
+					Type: "Unknown",
+					Compliant: false,
+					Message: fmt.Sprintf("Failed to unmarshal kind: %v", err),
+				})
+				allCompliant = false
 				continue
 			}
 	
@@ -285,7 +301,20 @@ func fetchAndApplyCatalog(cfg Config, masterClient masterpb.ConfigurationMasterC
 			res, err := resources.CreateResource(typeMeta.Kind, resData)
 			if err != nil {
 				logger.Error("Error creating resource instance", "kind", typeMeta.Kind, "error", err)
+				reports = append(reports, &masterpb.ResourceReport{
+					Type: typeMeta.Kind,
+					Compliant: false,
+					Message: fmt.Sprintf("Failed to create instance: %v", err),
+				})
+				allCompliant = false
 				continue
+			}
+
+			report := &masterpb.ResourceReport{
+				Type: res.Type(),
+				Id: res.ID(),
+				Compliant: true,
+				Message: "Resource is compliant",
 			}
 	
 			resLogger := logger.With("resource_type", res.Type(), "resource_id", res.ID())
@@ -293,28 +322,57 @@ func fetchAndApplyCatalog(cfg Config, masterClient masterpb.ConfigurationMasterC
 			currentState, err := res.Get()
 			if err != nil {
 				resLogger.Error("Error getting state", "error", err)
+				report.Compliant = false
+				report.Message = fmt.Sprintf("Error getting state: %v", err)
+				reports = append(reports, report)
+				allCompliant = false
 				continue
 			}
 	
 			isCompliant, err := res.Test(currentState)
 			if err != nil {
 				resLogger.Error("Error testing state", "error", err)
+				report.Compliant = false
+				report.Message = fmt.Sprintf("Error testing state: %v", err)
+				reports = append(reports, report)
+				allCompliant = false
 				continue
 			}
 	
 			if !isCompliant {
+				allCompliant = false
+				report.Compliant = false
 				resLogger.Info("Drift detected. Enforcing desired state...")
 				err := res.Set()
 				if err != nil {
+						report.Message = fmt.Sprintf("Failed to enforce: %v", err)
 						resLogger.Error("Error setting state", "error", err)
 				} else {
+						report.Message = "Drift detected but successfully enforced state"
+						report.Compliant = true // Technically compliant now
 						resLogger.Info("Successfully enforced state")
 				}
 			} else {
 					resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
-				}
+			}
+			reports = append(reports, report)
 		}
-		logger.Info("--- Configuration Check Finished ---")}
+
+		logger.Info("--- Configuration Check Finished ---")
+		
+		// Send the state report
+		_, err = masterClient.ReportState(ctx, &masterpb.ReportStateRequest{
+			NodeId:      cfg.NodeID,
+			Resources:   reports,
+			IsCompliant: allCompliant,
+			Timestamp:   time.Now().Unix(),
+		})
+		if err != nil {
+			logger.Error("Failed to report state to master", "error", err)
+		} else {
+			logger.Info("Successfully reported state to master")
+		}
+}
 
 func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
 	pemBytes, err := ioutil.ReadFile(path)

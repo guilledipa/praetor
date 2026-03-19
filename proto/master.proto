@@ -7,6 +7,9 @@ option go_package = "github.com/guilledipa/praetor/proto/gen/master;master";
 service ConfigurationMaster {
   // Requests the configuration catalog for the node.
   rpc GetCatalog(GetCatalogRequest) returns (GetCatalogResponse) {}
+  
+  // Reports the compliance state of the node back to the master.
+  rpc ReportState(ReportStateRequest) returns (ReportStateResponse) {}
 }
 
 message GetCatalogRequest {
@@ -30,4 +33,27 @@ message GetCatalogResponse {
   bytes signature = 2;
   // Algorithm used for signing (e.g., "ed25519").
   string signature_algorithm = 3;
+}
+
+message ResourceReport {
+  string type = 1;
+  string id = 2;
+  bool compliant = 3;
+  string message = 4;
+}
+
+message ReportStateRequest {
+  // Node identifier
+  string node_id = 1;
+  // A structural array of resource enforcement reports
+  repeated ResourceReport resources = 2;
+  // Whether the node is fully compliant overall
+  bool is_compliant = 3;
+  // Unix timestamp of the report
+  int64 timestamp = 4;
+}
+
+message ReportStateResponse {
+  // Master acknowledges receipt
+  bool acknowledged = 1;
 }

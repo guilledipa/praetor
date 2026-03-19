@@ -6,7 +6,6 @@ certs/
 *.pem
 # Go / Binary outputs
 bin/
-pkg/
 *.exe
 *.test
 *.out

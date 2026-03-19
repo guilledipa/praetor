@@ -10,5 +10,23 @@ services:
     volumes:
       - nats_data:/data/nats
 
+  master:
+    build:
+      context: .
+      dockerfile: master/Dockerfile
+    ports:
+      - "50051:50051"
+    depends_on:
+      - nats
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_CLIENT_CERT=/app/nats/certs/client.crt
+      - NATS_CLIENT_KEY=/app/nats/certs/client.key
+      - NATS_ROOT_CA=/app/nats/certs/ca.crt
+      - TRIGGER_INTERVAL=15s
+    volumes:
+      - ./master:/app/master
+      - ./nats/certs:/app/nats/certs:ro
+
 volumes:
   nats_data: {}

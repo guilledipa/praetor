@@ -35,3 +35,5 @@ require (
 replace github.com/guilledipa/praetor/master/catalog => ./catalog
 
 replace github.com/guilledipa/praetor/schema => ../schema
+
+replace github.com/guilledipa/praetor/pkg => ../pkg

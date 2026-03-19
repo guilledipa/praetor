@@ -1,0 +1,24 @@
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+# Copy all the modules needed due to local go.mod replaces
+COPY proto/ /app/proto/
+COPY schema/ /app/schema/
+COPY master/ /app/master/
+
+# Build the master
+WORKDIR /app/master
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux go build -o /praetor-master .
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+COPY --from=builder /praetor-master /app/praetor-master
+
+# Expose gRPC port
+EXPOSE 50051
+
+CMD ["/app/praetor-master"]

@@ -192,6 +192,191 @@ func (x *GetCatalogResponse) GetSignatureAlgorithm() string {
 	return ""
 }
 
+type ResourceReport struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Compliant     bool                   `protobuf:"varint,3,opt,name=compliant,proto3" json:"compliant,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResourceReport) Reset() {
+	*x = ResourceReport{}
+	mi := &file_proto_master_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourceReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourceReport) ProtoMessage() {}
+
+func (x *ResourceReport) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourceReport.ProtoReflect.Descriptor instead.
+func (*ResourceReport) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ResourceReport) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ResourceReport) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ResourceReport) GetCompliant() bool {
+	if x != nil {
+		return x.Compliant
+	}
+	return false
+}
+
+func (x *ResourceReport) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type ReportStateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Node identifier
+	NodeId string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	// A structural array of resource enforcement reports
+	Resources []*ResourceReport `protobuf:"bytes,2,rep,name=resources,proto3" json:"resources,omitempty"`
+	// Whether the node is fully compliant overall
+	IsCompliant bool `protobuf:"varint,3,opt,name=is_compliant,json=isCompliant,proto3" json:"is_compliant,omitempty"`
+	// Unix timestamp of the report
+	Timestamp     int64 `protobuf:"varint,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportStateRequest) Reset() {
+	*x = ReportStateRequest{}
+	mi := &file_proto_master_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportStateRequest) ProtoMessage() {}
+
+func (x *ReportStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportStateRequest.ProtoReflect.Descriptor instead.
+func (*ReportStateRequest) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ReportStateRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *ReportStateRequest) GetResources() []*ResourceReport {
+	if x != nil {
+		return x.Resources
+	}
+	return nil
+}
+
+func (x *ReportStateRequest) GetIsCompliant() bool {
+	if x != nil {
+		return x.IsCompliant
+	}
+	return false
+}
+
+func (x *ReportStateRequest) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+type ReportStateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Master acknowledges receipt
+	Acknowledged  bool `protobuf:"varint,1,opt,name=acknowledged,proto3" json:"acknowledged,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportStateResponse) Reset() {
+	*x = ReportStateResponse{}
+	mi := &file_proto_master_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportStateResponse) ProtoMessage() {}
+
+func (x *ReportStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportStateResponse.ProtoReflect.Descriptor instead.
+func (*ReportStateResponse) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ReportStateResponse) GetAcknowledged() bool {
+	if x != nil {
+		return x.Acknowledged
+	}
+	return false
+}
+
 var File_proto_master_proto protoreflect.FileDescriptor
 
 const file_proto_master_proto_rawDesc = "" +
@@ -210,10 +395,23 @@ const file_proto_master_proto_rawDesc = "" +
 	"\x12GetCatalogResponse\x12)\n" +
 	"\acatalog\x18\x01 \x01(\v2\x0f.master.CatalogR\acatalog\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12/\n" +
-	"\x13signature_algorithm\x18\x03 \x01(\tR\x12signatureAlgorithm2\\\n" +
+	"\x13signature_algorithm\x18\x03 \x01(\tR\x12signatureAlgorithm\"l\n" +
+	"\x0eResourceReport\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12\x1c\n" +
+	"\tcompliant\x18\x03 \x01(\bR\tcompliant\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"\xa4\x01\n" +
+	"\x12ReportStateRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x124\n" +
+	"\tresources\x18\x02 \x03(\v2\x16.master.ResourceReportR\tresources\x12!\n" +
+	"\fis_compliant\x18\x03 \x01(\bR\visCompliant\x12\x1c\n" +
+	"\ttimestamp\x18\x04 \x01(\x03R\ttimestamp\"9\n" +
+	"\x13ReportStateResponse\x12\"\n" +
+	"\facknowledged\x18\x01 \x01(\bR\facknowledged2\xa6\x01\n" +
 	"\x13ConfigurationMaster\x12E\n" +
 	"\n" +
-	"GetCatalog\x12\x19.master.GetCatalogRequest\x1a\x1a.master.GetCatalogResponse\"\x00B7Z5github.com/guilledipa/praetor/proto/gen/master;masterb\x06proto3"
+	"GetCatalog\x12\x19.master.GetCatalogRequest\x1a\x1a.master.GetCatalogResponse\"\x00\x12H\n" +
+	"\vReportState\x12\x1a.master.ReportStateRequest\x1a\x1b.master.ReportStateResponse\"\x00B7Z5github.com/guilledipa/praetor/proto/gen/master;masterb\x06proto3"
 
 var (
 	file_proto_master_proto_rawDescOnce sync.Once
@@ -227,23 +425,29 @@ func file_proto_master_proto_rawDescGZIP() []byte {
 	return file_proto_master_proto_rawDescData
 }
 
-var file_proto_master_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_proto_master_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_proto_master_proto_goTypes = []any{
-	(*GetCatalogRequest)(nil),  // 0: master.GetCatalogRequest
-	(*Catalog)(nil),            // 1: master.Catalog
-	(*GetCatalogResponse)(nil), // 2: master.GetCatalogResponse
-	nil,                        // 3: master.GetCatalogRequest.FactsEntry
+	(*GetCatalogRequest)(nil),   // 0: master.GetCatalogRequest
+	(*Catalog)(nil),             // 1: master.Catalog
+	(*GetCatalogResponse)(nil),  // 2: master.GetCatalogResponse
+	(*ResourceReport)(nil),      // 3: master.ResourceReport
+	(*ReportStateRequest)(nil),  // 4: master.ReportStateRequest
+	(*ReportStateResponse)(nil), // 5: master.ReportStateResponse
+	nil,                         // 6: master.GetCatalogRequest.FactsEntry
 }
 var file_proto_master_proto_depIdxs = []int32{
-	3, // 0: master.GetCatalogRequest.facts:type_name -> master.GetCatalogRequest.FactsEntry
+	6, // 0: master.GetCatalogRequest.facts:type_name -> master.GetCatalogRequest.FactsEntry
 	1, // 1: master.GetCatalogResponse.catalog:type_name -> master.Catalog
-	0, // 2: master.ConfigurationMaster.GetCatalog:input_type -> master.GetCatalogRequest
-	2, // 3: master.ConfigurationMaster.GetCatalog:output_type -> master.GetCatalogResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 2: master.ReportStateRequest.resources:type_name -> master.ResourceReport
+	0, // 3: master.ConfigurationMaster.GetCatalog:input_type -> master.GetCatalogRequest
+	4, // 4: master.ConfigurationMaster.ReportState:input_type -> master.ReportStateRequest
+	2, // 5: master.ConfigurationMaster.GetCatalog:output_type -> master.GetCatalogResponse
+	5, // 6: master.ConfigurationMaster.ReportState:output_type -> master.ReportStateResponse
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_proto_master_proto_init() }
@@ -257,7 +461,7 @@ func file_proto_master_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_master_proto_rawDesc), len(file_proto_master_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
