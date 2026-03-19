@@ -1,0 +1,17 @@
+# Certificates and Keys
+certs/
+**/certs/
+*.crt
+*.key
+*.pem
+# Go / Binary outputs
+bin/
+pkg/
+*.exe
+*.test
+*.out
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
