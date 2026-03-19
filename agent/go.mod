@@ -11,6 +11,7 @@ replace github.com/guilledipa/praetor/schema => ../schema
 require (
 	github.com/guilledipa/praetor/agent/resources v0.0.0-INCOMPATIBLE
 	github.com/guilledipa/praetor/proto/gen v0.0.0-INCOMPATIBLE
+	github.com/guilledipa/praetor/schema v0.0.0-INCOMPATIBLE
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/nats-io/nats.go v1.34.0
 	github.com/shirou/gopsutil/v3 v3.24.5
@@ -23,7 +24,6 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.22.0 // indirect
-	github.com/guilledipa/praetor/schema v0.0.0-INCOMPATIBLE // indirect
 	github.com/klauspost/compress v1.17.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect

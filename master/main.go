@@ -22,6 +22,9 @@ import (
 	"github.com/guilledipa/praetor/pkg/broker/nats"
 	"github.com/guilledipa/praetor/pkg/secrets"
 	"github.com/guilledipa/praetor/pkg/secrets/local"
+	"github.com/guilledipa/praetor/pkg/storage"
+	"github.com/guilledipa/praetor/pkg/storage/natsjs"
+	natsgo "github.com/nats-io/nats.go"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
 	"github.com/kelseyhightower/envconfig"
 	"google.golang.org/grpc"
@@ -51,6 +54,7 @@ type server struct {
 	pb.UnimplementedConfigurationMasterServer
 	signingKey ed25519.PrivateKey
 	secretProv secrets.Provider
+	store      storage.Provider
 }
 
 func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
@@ -196,11 +200,13 @@ func (s *server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 func (s *server) ReportState(ctx context.Context, req *pb.ReportStateRequest) (*pb.ReportStateResponse, error) {
 	logger.Info("Received state report from agent", "node_id", req.NodeId, "resource_count", len(req.Resources))
 	
-	// TODO(Phase 8): Implement a StorageProvider interface to persist these gRPC reports
-	// to a SQLite/PostgreSQL backend instead of immediately discarding them after logging.
-
 	for _, rep := range req.Resources {
-		logger.Debug("Resource run", "node_id", req.NodeId, "type", rep.GetType(), "id", rep.GetId(), "compliant", rep.GetCompliant(), "message", rep.GetMessage())
+		err := s.store.StoreReport(ctx, req.NodeId, rep)
+		if err != nil {
+			logger.Error("Failed to persist report state into JetStream", "node_id", req.NodeId, "resource_id", rep.GetId(), "error", err)
+		} else {
+			logger.Debug("Resource run persisted", "node_id", req.NodeId, "type", rep.GetType(), "id", rep.GetId(), "compliant", rep.GetCompliant())
+		}
 	}
 	
 	return &pb.ReportStateResponse{Acknowledged: true}, nil
@@ -313,6 +319,34 @@ func setupBroker(cfg MasterConfig) (broker.Broker, error) {
 		return nil, fmt.Errorf("failed to add AGENT_TRIGGERS stream: %w", err)
 	}
 	return b, nil
+}
+
+func setupStorage(cfg MasterConfig) (storage.Provider, error) {
+	cert, err := tls.LoadX509KeyPair(cfg.NatsClientCert, cfg.NatsClientKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load client key pair: %w", err)
+	}
+
+	caCert, err := os.ReadFile(cfg.NatsRootCA)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read root CA file: %w", err)
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	// Connect independent NATS client mapped strictly for storage persistence bounds
+	nc, err := natsgo.Connect(cfg.NatsURL, natsgo.Secure(tlsConfig))
+	if err != nil {
+		return nil, fmt.Errorf("storage nats connection failed: %w", err)
+	}
+
+	return natsjs.NewProvider(context.Background(), nc)
 }
 
 func startTriggerPublisher(b broker.Broker, cfg MasterConfig) {
@@ -448,7 +482,18 @@ func main() {
 	if err != nil {
 		logger.Warn("Failed to load secrets.yaml, providing blank secret fallback", "error", err)
 	}
-	pb.RegisterConfigurationMasterServer(s, &server{signingKey: signingKey, secretProv: secretProv})
+
+	storageProv, err := setupStorage(masterCfg)
+	if err != nil {
+		logger.Error("Failed to bootstrap JS Storage persistence mapping natively", "error", err)
+		os.Exit(1)
+	}
+
+	pb.RegisterConfigurationMasterServer(s, &server{
+		signingKey: signingKey, 
+		secretProv: secretProv,
+		store:      storageProv,
+	})
 	reflection.Register(s)
 
 	lis, err := net.Listen("tcp", port)

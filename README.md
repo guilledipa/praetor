@@ -390,8 +390,7 @@ go mod tidy
 cd ..
 ```
 
-## Roadmap
+## Phase 8 Capabilities Built
 
-**Phase 8 Initiatives:**
-- **Persistent State Compliance Reports**: Expand the `ReportState` handler on the Master to implement a `StorageProvider` (e.g. SQLite, PostgreSQL) that persistently caches the historical configuration drifts generated across the fleet, paving the way for a compliance dashboard.
-- **Multi-OS Package Manager Support**: Expand the `Package` resource plugin on the agent to leverage `facts.os` to dynamically swap `apt` out for `yum`, `dnf`, or `zypper` depending on the enforcing node's architecture.
+- **Persistent State Compliance Reports**: Expand the `ReportState` handler on the Master to implement a `StorageProvider` (NATS JetStream Key/Value) that persistently caches the historical configuration drifts generated across the fleet, paving the way for a compliance dashboard.
+- **Multi-OS Package Manager Support**: Expand the `Package` resource plugin on the agent to dynamically swap `apt` out for `yum`, `dnf`, or `zypper` depending on the enforcing node's `$PATH` binary availability.

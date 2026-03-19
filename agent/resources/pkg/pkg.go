@@ -22,8 +22,14 @@ func getProvider() (Provider, error) {
 	if _, err := exec.LookPath("apt-get"); err == nil {
 		return &aptProvider{}, nil
 	}
+	if _, err := exec.LookPath("dnf"); err == nil {
+		return &dnfProvider{}, nil
+	}
 	if _, err := exec.LookPath("yum"); err == nil {
 		return &yumProvider{}, nil
+	}
+	if _, err := exec.LookPath("zypper"); err == nil {
+		return &zypperProvider{}, nil
 	}
 	if _, err := exec.LookPath("apk"); err == nil {
 		return &apkProvider{}, nil
@@ -53,7 +59,29 @@ func (p *aptProvider) Remove(name string) error {
 	return nil
 }
 
-// yumProvider implements Provider for RHEL/CentOS
+// dnfProvider implements Provider for modern RHEL/Fedora
+type dnfProvider struct{}
+func (p *dnfProvider) Name() string { return "dnf" }
+func (p *dnfProvider) IsInstalled(name string) (bool, error) {
+	err := exec.Command("rpm", "-q", name).Run()
+	return err == nil, nil
+}
+func (p *dnfProvider) Install(name string) error {
+	out, err := exec.Command("dnf", "install", "-y", name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dnf install failed: %s, %w", string(out), err)
+	}
+	return nil
+}
+func (p *dnfProvider) Remove(name string) error {
+	out, err := exec.Command("dnf", "remove", "-y", name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dnf remove failed: %s, %w", string(out), err)
+	}
+	return nil
+}
+
+// yumProvider implements Provider for legacy RHEL/CentOS
 type yumProvider struct{}
 func (p *yumProvider) Name() string { return "yum" }
 func (p *yumProvider) IsInstalled(name string) (bool, error) {
@@ -71,6 +99,28 @@ func (p *yumProvider) Remove(name string) error {
 	out, err := exec.Command("yum", "remove", "-y", name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("yum remove failed: %s, %w", string(out), err)
+	}
+	return nil
+}
+
+// zypperProvider implements Provider for SUSE
+type zypperProvider struct{}
+func (p *zypperProvider) Name() string { return "zypper" }
+func (p *zypperProvider) IsInstalled(name string) (bool, error) {
+	err := exec.Command("rpm", "-q", name).Run()
+	return err == nil, nil
+}
+func (p *zypperProvider) Install(name string) error {
+	out, err := exec.Command("zypper", "--non-interactive", "install", name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("zypper install failed: %s, %w", string(out), err)
+	}
+	return nil
+}
+func (p *zypperProvider) Remove(name string) error {
+	out, err := exec.Command("zypper", "--non-interactive", "remove", name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("zypper remove failed: %s, %w", string(out), err)
 	}
 	return nil
 }
@@ -183,7 +233,6 @@ func (p *Package) Test(currentState resources.State) (bool, error) {
 }
 
 // Set enforces the desired state of the package.
-// TODO(Phase 8): Add Multi-OS support here (yum, dnf, zypper) evaluating facts.os before strictly depending on apt-get.
 func (p *Package) Set() error {
 	desiredEnsure := p.Spec.Ensure
 	if desiredEnsure == "latest" {
