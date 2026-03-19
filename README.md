@@ -394,18 +394,19 @@ This single command handles compiling the gRPC abstractions and cleanly restruct
 - **Multi-OS Package Manager Support**: Expand the `Package` resource plugin on the agent to dynamically swap `apt` out for `yum`, `dnf`, or `zypper` depending on the enforcing node's `$PATH` binary availability.
 - **Advanced Linux Primitives**: We fully established robust state management over structural Linux boundaries including `user`, `group`, and `cron` components, verified safely under the hood through Go Helper Process mocking abstractions.
 
-## Roadmap: Terraform-Style External RPC Plugin Engine
+## Phase 17 Capabilities Built: Extensible RPC Plugin Engine
 
-While Praetor currently compiles its "Core" Linux plugins (File, User, Group, Service, Package, Cron, Exec) directly into the agent binary, the long-term vision is to decouple extensibility entirely using a **Hashicorp-style RPC Plugin Architecture**.
+While Praetor previously compiled its "Core" Linux plugins directly into the agent binary, we have decoupled extensibility entirely using a **Hashicorp-style RPC Plugin Architecture**.
 
 ### The "Core" Plugin vs "External" Plugins
-- **The Core Linux Plugin**: The resources built so far will be extracted into a primary `praetor-plugin-linux` standalone provider. 
-- **Ecosystem Expansion**: End users will be able to write completely isolated plugins in *any programming language* (Go, Python, Rust) without recompiling Praetor! You could drop a `praetor-plugin-mysql` or `praetor-plugin-aws` binary into the plugin folder, and Praetor will discover and orchestrate them dynamically.
+- **The Core Linux Plugin**: The local Linux resources (File, User, Group, Service, Package, Cron, Exec) were successfully extracted into a primary `praetor-plugin-linux` standalone provider. 
+- **Ecosystem Expansion**: End users can now write completely isolated plugins in *any programming language* (Go, Python, Rust) without recompiling Praetor! Drop a plugin binary into the `/opt/praetor/plugins/` directory, and the Agent daemon auto-discovers and orchestrates them dynamically over `gRPC`.
+
 
 ### How RPC Plugins Work
-When Praetor encounters a `mysql_user` resource in its declarative DAG, it won't execute it internally. Instead:
-1. Praetor daemon spins up the `praetor-plugin-mysql` binary.
-2. The Agent handshakes with the binary over a local UNIX Domain Socket (UDS) / localhost port via robust **gRPC**.
+When Praetor encounters a `mysql_user` resource or any dynamic primitive in its declarative DAG, it doesn't execute it internally:
+1. Praetor daemon spins up the target `praetor-plugin-` binary in the background.
+2. The Agent handshakes with the binary over a local UNIX Domain Socket (UDS) proxy via robust **gRPC**.
 3. It dispatches a `GetState(resource_id)` RPC call.
 4. The plugin securely returns the state evaluation, and Praetor schedules the drifts mathematically. If the plugin crashes, Praetor simply catches the RPC termination and flags the resource as failed without bringing down the orchestrator!
 
