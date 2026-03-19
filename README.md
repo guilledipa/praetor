@@ -409,10 +409,11 @@ When Praetor encounters a `mysql_user` resource in its declarative DAG, it won't
 3. It dispatches a `GetState(resource_id)` RPC call.
 4. The plugin securely returns the state evaluation, and Praetor schedules the drifts mathematically. If the plugin crashes, Praetor simply catches the RPC termination and flags the resource as failed without bringing down the orchestrator!
 
-### Kubernetes (K8s) Deployment Architecture
-Because plugins operate via isolated binaries communicating over gRPC UNIX Sockets, they translate seamlessly into Kubernetes topologies using pure cloud-native primitives.
+### Physical Host & VM Deployment Architecture
+Because plugins operate via isolated binaries communicating over gRPC UNIX Sockets, they act cleanly across typical physical machines or Virtual Machines (VMs) where the primary Praetor Agent is running.
 
-Plugins will not necessarily need to be bundled inside the single Master or Agent docker images.
-Instead, they will map out cleanly via **Pod Sidecars** or **Isolated DaemonSets**:
-- **Sidecar Model:** You deploy the Praetor Agent container. Inside the same Pod, you deploy a `praetor-plugin-mysql` container. They share a `emptyDir` volume mount located at `/var/run/praetor/plugins`. They securely multiplex RPC calls over that shared memory space instantly.
-- **DaemonSet Integration:** If deploying Agent operators widely, the Agent runs as a DaemonSet mounting a persistent Host UDS path where individual specialized operators listen to handle domain-specific workload mutations securely.
+Plugins do not need to be compiled directly into the monolithic Agent installation. 
+Instead, they deploy smoothly onto the host OS:
+- **Daemon Native Spawning:** You place a standalone `praetor-plugin-mysql` binary in a known directory (e.g., `/opt/praetor/plugins/`). When the primary `praetor-agent` (running as a `systemd` service) boots up, it discovers these binaries and launches them natively as child background daemons. 
+- **Isolated UNIX Sockets:** The agent and its child plugins communicate locally over `/var/run/praetor/` UNIX sockets securely on the host machine.
+- **Resilience:** If a specific workload plugin (like `mysql` or `redis`) panics or crashes, the core OS node agent remains completely stable and simply flags the associated resources as unreachable, continuing to manage everything else!

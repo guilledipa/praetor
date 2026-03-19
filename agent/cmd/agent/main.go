@@ -9,14 +9,8 @@ import (
 	"github.com/guilledipa/praetor/agent/pki"
 	"github.com/spf13/viper"
 
+	"github.com/guilledipa/praetor/agent/plugin"
 	_ "github.com/guilledipa/praetor/agent/facts/core"
-	_ "github.com/guilledipa/praetor/agent/resources/cron"
-	_ "github.com/guilledipa/praetor/agent/resources/exec"
-	_ "github.com/guilledipa/praetor/agent/resources/file"
-	_ "github.com/guilledipa/praetor/agent/resources/group"
-	_ "github.com/guilledipa/praetor/agent/resources/pkg"
-	_ "github.com/guilledipa/praetor/agent/resources/svc"
-	_ "github.com/guilledipa/praetor/agent/resources/user"
 )
 
 func main() {
@@ -48,6 +42,11 @@ func main() {
 	slog.SetDefault(logger)
 
 	logger.Info("Agent starting...")
+
+	if err := plugin.InitPlugins(logger); err != nil {
+		logger.Error("Failed to initialize RPC plugins", "error", err)
+	}
+	defer plugin.Cleanup()
 
 	bootstrapCfg := pki.BootstrapConfig{
 		ClientCertPath:    cfg.NatsClientCert,

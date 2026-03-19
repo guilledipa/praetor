@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/guilledipa/praetor/agent/resources"
+	"github.com/guilledipa/praetor/plugins/linux/resources"
 	"github.com/guilledipa/praetor/schema"
 )
 

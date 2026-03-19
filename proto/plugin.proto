@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package plugin;
+
+option go_package = "github.com/guilledipa/praetor/proto/gen/plugin";
+
+service ResourcePlugin {
+  // Discover what resources this plugin can handle natively (e.g. "User", "File", "Group")
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse) {}
+
+  // Lifecycle Methods mapped natively across the UDS pipe
+  rpc Get(GetRequest) returns (GetResponse) {}
+  rpc Test(TestRequest) returns (TestResponse) {}
+  rpc Set(SetRequest) returns (SetResponse) {}
+}
+
+message CapabilitiesRequest {}
+
+message CapabilitiesResponse {
+  repeated string kinds = 1;
+}
+
+message GetRequest {
+  string kind = 1;
+  bytes spec = 2; // The raw JSON serialization of the schema struct
+}
+
+message GetResponse {
+  bytes state = 1; // JSON serialized map[string]interface{}
+  string error = 2;
+}
+
+message TestRequest {
+  string kind = 1;
+  bytes spec = 2;
+  bytes state = 3; 
+}
+
+message TestResponse {
+  bool match = 1;
+  string error = 2;
+}
+
+message SetRequest {
+  string kind = 1;
+  bytes spec = 2;
+}
+
+message SetResponse {
+  string error = 1;
+}

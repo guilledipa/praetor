@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/guilledipa/praetor/agent/resources"
+	"github.com/guilledipa/praetor/plugins/linux/resources"
 )
 
 func fakeExecCommand(command string, args ...string) *exec.Cmd {

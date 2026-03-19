@@ -2,7 +2,8 @@ go 1.25.0
 
 use (
 	./agent
+	./cli
 	./master
 	./pkg
-	./cli
+	./plugins/linux
 )
