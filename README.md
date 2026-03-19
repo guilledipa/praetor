@@ -360,35 +360,32 @@ To add support for a new resource type (e.g., `crontab`):
     // ... Implement resources.Resource interface for &MyResource ...
     ```
 
-5.  **Import in Agent:** Add a blank import to `agent/main.go`.
+#### 6. Update `agent/go.mod`
+Run `go mod tidy` or preferably use `make tidy` at the project root.
 
-6.  **Update `agent/go.mod`:** Run `go mod tidy`.
+## Local Development (Build System)
 
-## Proto Generation
+Praetor uses a natively managed **Go Workspace** (`go.work`) linked with a root **Makefile** to orchestrate its multi-module architecture effortlessly.
 
-If you modify `proto/master.proto`, you need to regenerate the Go code using `protoc`.
-Run the following command from the project root directory:
+Using `go.work` enables IDEs (like VSCode or GoLand) to instantly resolve cross-module imports (e.g., when the `agent` heavily references the `pkg` module).
 
+You do not need to individually compile components. The project root provides a unified Make Task Runner:
+
+- **`make all`**: Compiles Protobufs, executes all tests, and builds binaries.
+- **`make build`**: Statically compiles both the `agent` and `master` binaries sequentially and exports them into `./bin/`.
+- **`make test`**: Runs the entire matrix of table-driven testing suites simultaneously across `agent/`, `master/`, and `pkg/`.
+- **`make tidy`**: Globally cleans up dependency trees on all 4 isolated `go.mod` files.
+
+#### Proto Generation
+
+If you modify `proto/master.proto`, you need to regenerate the Go code using `protoc` across the workspace. We have completely automated this via the root `Makefile`. 
+
+Simply run:
 ```bash
-protoc --go_out=./proto/gen/master --go-grpc_out=./proto/gen/master proto/master.proto --go_opt=module=github.com/guilledipa/praetor/proto/gen/master --go-grpc_opt=module=github.com/guilledipa/praetor/proto/gen/master
+make proto
+make tidy
 ```
-
-Make sure to tidy the modules afterwards:
-
-```bash
-cd proto
-go mod tidy
-cd ..
-cd proto/gen/master
-go mod tidy
-cd ../../..
-cd agent
-go mod tidy
-cd ..
-cd master
-go mod tidy
-cd ..
-```
+This single command handles compiling the gRPC abstractions and cleanly restructuring all 4 module dependency trees automatically!
 
 ## Phase 8 Capabilities Built
 

@@ -5,8 +5,19 @@ all: proto test build
 
 proto:
 	@echo "Compiling Protobufs..."
-	@cd proto && protoc --go_out=. --go-grpc_out=. master.proto
+	protoc --go_out=./proto/gen/master --go-grpc_out=./proto/gen/master proto/master.proto \
+		--go_opt=module=github.com/guilledipa/praetor/proto/gen/master \
+		--go-grpc_opt=module=github.com/guilledipa/praetor/proto/gen/master
 	@echo "Protobufs compiled!"
+
+tidy:
+	@echo "Tidying all workspace modules..."
+	@cd proto && go mod tidy
+	@cd proto/gen/master && go mod tidy
+	@cd pkg && go mod tidy
+	@cd agent && go mod tidy
+	@cd master && go mod tidy
+	@echo "Workspace tidied!"
 
 test:
 	@echo "Running test suite globally across the workspace..."
