@@ -8,6 +8,9 @@ COPY proto/ /app/proto/
 COPY schema/ /app/schema/
 COPY pkg/ /app/pkg/
 COPY master/ /app/master/
+COPY agent/ /app/agent/
+COPY cli/ /app/cli/
+COPY plugins/ /app/plugins/
 
 # Build the master
 WORKDIR /app/master
