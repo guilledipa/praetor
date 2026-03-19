@@ -54,15 +54,15 @@ func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
 	return priv.(ed25519.PrivateKey), nil
 }
 
-func setupStorage(cfg MasterConfig) (storage.Provider, error) {
+func setupStorage(cfg MasterConfig) (storage.Provider, *natsgo.Conn, error) {
 	cert, err := tls.LoadX509KeyPair(cfg.NatsClientCert, cfg.NatsClientKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load client key pair: %w", err)
+		return nil, nil, fmt.Errorf("failed to load client key pair: %w", err)
 	}
 
 	caCert, err := os.ReadFile(cfg.NatsRootCA)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read root CA file: %w", err)
+		return nil, nil, fmt.Errorf("failed to read root CA file: %w", err)
 	}
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
@@ -75,10 +75,14 @@ func setupStorage(cfg MasterConfig) (storage.Provider, error) {
 
 	nc, err := natsgo.Connect(cfg.NatsURL, natsgo.Secure(tlsConfig))
 	if err != nil {
-		return nil, fmt.Errorf("storage nats connection failed: %w", err)
+		return nil, nil, fmt.Errorf("storage nats connection failed: %w", err)
 	}
 
-	return natsjs.NewProvider(context.Background(), nc)
+	provider, err := natsjs.NewProvider(context.Background(), nc)
+	if err != nil {
+		return nil, nil, err
+	}
+	return provider, nc, nil
 }
 
 func main() {
@@ -196,7 +200,7 @@ func main() {
 		logger.Warn("Failed to load secrets.yaml", "error", err)
 	}
 
-	storageProv, err := setupStorage(cfg)
+	storageProv, ncStorage, err := setupStorage(cfg)
 	if err != nil {
 		logger.Error("Failed to bootstrap JS Storage persistence mapping natively", "error", err)
 		os.Exit(1)
@@ -205,6 +209,23 @@ func main() {
 	cls := classifier.NewFileClassifier("classification.yaml", "roles")
 	pb.RegisterConfigurationMasterServer(s, server.NewServer(signingKey, secretProv, storageProv, cls, logger))
 	reflection.Register(s)
+
+	// Standup Operator Server
+	opServer := grpc.NewServer(grpc.Creds(creds), grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	pb.RegisterOperatorServer(opServer, server.NewOperatorServer(storageProv, ncStorage, logger))
+	reflection.Register(opServer)
+
+	opLis, err := net.Listen("tcp", ":50053")
+	if err != nil {
+		logger.Error("failed to listen on operator port", "error", err)
+		os.Exit(1)
+	}
+	go func() {
+		logger.Info("Operator API listening on gRPC", "port", ":50053", "tls", "mTLS")
+		if err := opServer.Serve(opLis); err != nil {
+			logger.Error("failed to serve operator gRPC", "error", err)
+		}
+	}()
 
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {

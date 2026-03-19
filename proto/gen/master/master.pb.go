@@ -484,6 +484,354 @@ func (x *SignCSRResponse) GetCertificatePem() string {
 	return ""
 }
 
+type ListAgentsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentsRequest) Reset() {
+	*x = ListAgentsRequest{}
+	mi := &file_proto_master_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentsRequest) ProtoMessage() {}
+
+func (x *ListAgentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentsRequest.ProtoReflect.Descriptor instead.
+func (*ListAgentsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{8}
+}
+
+type AgentSummary struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NodeId         string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	IsCompliant    bool                   `protobuf:"varint,2,opt,name=is_compliant,json=isCompliant,proto3" json:"is_compliant,omitempty"`
+	LastReportedAt int64                  `protobuf:"varint,3,opt,name=last_reported_at,json=lastReportedAt,proto3" json:"last_reported_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AgentSummary) Reset() {
+	*x = AgentSummary{}
+	mi := &file_proto_master_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentSummary) ProtoMessage() {}
+
+func (x *AgentSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentSummary.ProtoReflect.Descriptor instead.
+func (*AgentSummary) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *AgentSummary) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *AgentSummary) GetIsCompliant() bool {
+	if x != nil {
+		return x.IsCompliant
+	}
+	return false
+}
+
+func (x *AgentSummary) GetLastReportedAt() int64 {
+	if x != nil {
+		return x.LastReportedAt
+	}
+	return 0
+}
+
+type ListAgentsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Agents        []*AgentSummary        `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentsResponse) Reset() {
+	*x = ListAgentsResponse{}
+	mi := &file_proto_master_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentsResponse) ProtoMessage() {}
+
+func (x *ListAgentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentsResponse.ProtoReflect.Descriptor instead.
+func (*ListAgentsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListAgentsResponse) GetAgents() []*AgentSummary {
+	if x != nil {
+		return x.Agents
+	}
+	return nil
+}
+
+type AgentStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentStatusRequest) Reset() {
+	*x = AgentStatusRequest{}
+	mi := &file_proto_master_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentStatusRequest) ProtoMessage() {}
+
+func (x *AgentStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentStatusRequest.ProtoReflect.Descriptor instead.
+func (*AgentStatusRequest) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AgentStatusRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type AgentStatusResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NodeId         string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	IsCompliant    bool                   `protobuf:"varint,2,opt,name=is_compliant,json=isCompliant,proto3" json:"is_compliant,omitempty"`
+	LastReportedAt int64                  `protobuf:"varint,3,opt,name=last_reported_at,json=lastReportedAt,proto3" json:"last_reported_at,omitempty"`
+	Resources      []*ResourceReport      `protobuf:"bytes,4,rep,name=resources,proto3" json:"resources,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AgentStatusResponse) Reset() {
+	*x = AgentStatusResponse{}
+	mi := &file_proto_master_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentStatusResponse) ProtoMessage() {}
+
+func (x *AgentStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentStatusResponse.ProtoReflect.Descriptor instead.
+func (*AgentStatusResponse) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *AgentStatusResponse) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *AgentStatusResponse) GetIsCompliant() bool {
+	if x != nil {
+		return x.IsCompliant
+	}
+	return false
+}
+
+func (x *AgentStatusResponse) GetLastReportedAt() int64 {
+	if x != nil {
+		return x.LastReportedAt
+	}
+	return 0
+}
+
+func (x *AgentStatusResponse) GetResources() []*ResourceReport {
+	if x != nil {
+		return x.Resources
+	}
+	return nil
+}
+
+type TriggerSyncRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TriggerSyncRequest) Reset() {
+	*x = TriggerSyncRequest{}
+	mi := &file_proto_master_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TriggerSyncRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TriggerSyncRequest) ProtoMessage() {}
+
+func (x *TriggerSyncRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TriggerSyncRequest.ProtoReflect.Descriptor instead.
+func (*TriggerSyncRequest) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *TriggerSyncRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type TriggerSyncResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TriggerSyncResponse) Reset() {
+	*x = TriggerSyncResponse{}
+	mi := &file_proto_master_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TriggerSyncResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TriggerSyncResponse) ProtoMessage() {}
+
+func (x *TriggerSyncResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TriggerSyncResponse.ProtoReflect.Descriptor instead.
+func (*TriggerSyncResponse) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *TriggerSyncResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *TriggerSyncResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 var File_proto_master_proto protoreflect.FileDescriptor
 
 const file_proto_master_proto_rawDesc = "" +
@@ -520,13 +868,37 @@ const file_proto_master_proto_rawDesc = "" +
 	"\x0fbootstrap_token\x18\x02 \x01(\tR\x0ebootstrapToken\x12\x17\n" +
 	"\acsr_pem\x18\x03 \x01(\tR\x06csrPem\":\n" +
 	"\x0fSignCSRResponse\x12'\n" +
-	"\x0fcertificate_pem\x18\x01 \x01(\tR\x0ecertificatePem2\xa6\x01\n" +
+	"\x0fcertificate_pem\x18\x01 \x01(\tR\x0ecertificatePem\"\x13\n" +
+	"\x11ListAgentsRequest\"t\n" +
+	"\fAgentSummary\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12!\n" +
+	"\fis_compliant\x18\x02 \x01(\bR\visCompliant\x12(\n" +
+	"\x10last_reported_at\x18\x03 \x01(\x03R\x0elastReportedAt\"B\n" +
+	"\x12ListAgentsResponse\x12,\n" +
+	"\x06agents\x18\x01 \x03(\v2\x14.master.AgentSummaryR\x06agents\"-\n" +
+	"\x12AgentStatusRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\xb1\x01\n" +
+	"\x13AgentStatusResponse\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12!\n" +
+	"\fis_compliant\x18\x02 \x01(\bR\visCompliant\x12(\n" +
+	"\x10last_reported_at\x18\x03 \x01(\x03R\x0elastReportedAt\x124\n" +
+	"\tresources\x18\x04 \x03(\v2\x16.master.ResourceReportR\tresources\"-\n" +
+	"\x12TriggerSyncRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"I\n" +
+	"\x13TriggerSyncResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xa6\x01\n" +
 	"\x13ConfigurationMaster\x12E\n" +
 	"\n" +
 	"GetCatalog\x12\x19.master.GetCatalogRequest\x1a\x1a.master.GetCatalogResponse\"\x00\x12H\n" +
 	"\vReportState\x12\x1a.master.ReportStateRequest\x1a\x1b.master.ReportStateResponse\"\x002T\n" +
 	"\x14CertificateAuthority\x12<\n" +
-	"\aSignCSR\x12\x16.master.SignCSRRequest\x1a\x17.master.SignCSRResponse\"\x00B7Z5github.com/guilledipa/praetor/proto/gen/master;masterb\x06proto3"
+	"\aSignCSR\x12\x16.master.SignCSRRequest\x1a\x17.master.SignCSRResponse\"\x002\xe8\x01\n" +
+	"\bOperator\x12E\n" +
+	"\n" +
+	"ListAgents\x12\x19.master.ListAgentsRequest\x1a\x1a.master.ListAgentsResponse\"\x00\x12K\n" +
+	"\x0eGetAgentStatus\x12\x1a.master.AgentStatusRequest\x1a\x1b.master.AgentStatusResponse\"\x00\x12H\n" +
+	"\vTriggerSync\x12\x1a.master.TriggerSyncRequest\x1a\x1b.master.TriggerSyncResponse\"\x00B7Z5github.com/guilledipa/praetor/proto/gen/master;masterb\x06proto3"
 
 var (
 	file_proto_master_proto_rawDescOnce sync.Once
@@ -540,7 +912,7 @@ func file_proto_master_proto_rawDescGZIP() []byte {
 	return file_proto_master_proto_rawDescData
 }
 
-var file_proto_master_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_proto_master_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_proto_master_proto_goTypes = []any{
 	(*GetCatalogRequest)(nil),   // 0: master.GetCatalogRequest
 	(*Catalog)(nil),             // 1: master.Catalog
@@ -550,23 +922,38 @@ var file_proto_master_proto_goTypes = []any{
 	(*ReportStateResponse)(nil), // 5: master.ReportStateResponse
 	(*SignCSRRequest)(nil),      // 6: master.SignCSRRequest
 	(*SignCSRResponse)(nil),     // 7: master.SignCSRResponse
-	nil,                         // 8: master.GetCatalogRequest.FactsEntry
+	(*ListAgentsRequest)(nil),   // 8: master.ListAgentsRequest
+	(*AgentSummary)(nil),        // 9: master.AgentSummary
+	(*ListAgentsResponse)(nil),  // 10: master.ListAgentsResponse
+	(*AgentStatusRequest)(nil),  // 11: master.AgentStatusRequest
+	(*AgentStatusResponse)(nil), // 12: master.AgentStatusResponse
+	(*TriggerSyncRequest)(nil),  // 13: master.TriggerSyncRequest
+	(*TriggerSyncResponse)(nil), // 14: master.TriggerSyncResponse
+	nil,                         // 15: master.GetCatalogRequest.FactsEntry
 }
 var file_proto_master_proto_depIdxs = []int32{
-	8, // 0: master.GetCatalogRequest.facts:type_name -> master.GetCatalogRequest.FactsEntry
-	1, // 1: master.GetCatalogResponse.catalog:type_name -> master.Catalog
-	3, // 2: master.ReportStateRequest.resources:type_name -> master.ResourceReport
-	0, // 3: master.ConfigurationMaster.GetCatalog:input_type -> master.GetCatalogRequest
-	4, // 4: master.ConfigurationMaster.ReportState:input_type -> master.ReportStateRequest
-	6, // 5: master.CertificateAuthority.SignCSR:input_type -> master.SignCSRRequest
-	2, // 6: master.ConfigurationMaster.GetCatalog:output_type -> master.GetCatalogResponse
-	5, // 7: master.ConfigurationMaster.ReportState:output_type -> master.ReportStateResponse
-	7, // 8: master.CertificateAuthority.SignCSR:output_type -> master.SignCSRResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	15, // 0: master.GetCatalogRequest.facts:type_name -> master.GetCatalogRequest.FactsEntry
+	1,  // 1: master.GetCatalogResponse.catalog:type_name -> master.Catalog
+	3,  // 2: master.ReportStateRequest.resources:type_name -> master.ResourceReport
+	9,  // 3: master.ListAgentsResponse.agents:type_name -> master.AgentSummary
+	3,  // 4: master.AgentStatusResponse.resources:type_name -> master.ResourceReport
+	0,  // 5: master.ConfigurationMaster.GetCatalog:input_type -> master.GetCatalogRequest
+	4,  // 6: master.ConfigurationMaster.ReportState:input_type -> master.ReportStateRequest
+	6,  // 7: master.CertificateAuthority.SignCSR:input_type -> master.SignCSRRequest
+	8,  // 8: master.Operator.ListAgents:input_type -> master.ListAgentsRequest
+	11, // 9: master.Operator.GetAgentStatus:input_type -> master.AgentStatusRequest
+	13, // 10: master.Operator.TriggerSync:input_type -> master.TriggerSyncRequest
+	2,  // 11: master.ConfigurationMaster.GetCatalog:output_type -> master.GetCatalogResponse
+	5,  // 12: master.ConfigurationMaster.ReportState:output_type -> master.ReportStateResponse
+	7,  // 13: master.CertificateAuthority.SignCSR:output_type -> master.SignCSRResponse
+	10, // 14: master.Operator.ListAgents:output_type -> master.ListAgentsResponse
+	12, // 15: master.Operator.GetAgentStatus:output_type -> master.AgentStatusResponse
+	14, // 16: master.Operator.TriggerSync:output_type -> master.TriggerSyncResponse
+	11, // [11:17] is the sub-list for method output_type
+	5,  // [5:11] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_proto_master_proto_init() }
@@ -580,9 +967,9 @@ func file_proto_master_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_master_proto_rawDesc), len(file_proto_master_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   16,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   3,
 		},
 		GoTypes:           file_proto_master_proto_goTypes,
 		DependencyIndexes: file_proto_master_proto_depIdxs,

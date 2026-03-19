@@ -265,3 +265,181 @@ var CertificateAuthority_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "proto/master.proto",
 }
+
+const (
+	Operator_ListAgents_FullMethodName     = "/master.Operator/ListAgents"
+	Operator_GetAgentStatus_FullMethodName = "/master.Operator/GetAgentStatus"
+	Operator_TriggerSync_FullMethodName    = "/master.Operator/TriggerSync"
+)
+
+// OperatorClient is the client API for Operator service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type OperatorClient interface {
+	ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error)
+	GetAgentStatus(ctx context.Context, in *AgentStatusRequest, opts ...grpc.CallOption) (*AgentStatusResponse, error)
+	TriggerSync(ctx context.Context, in *TriggerSyncRequest, opts ...grpc.CallOption) (*TriggerSyncResponse, error)
+}
+
+type operatorClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewOperatorClient(cc grpc.ClientConnInterface) OperatorClient {
+	return &operatorClient{cc}
+}
+
+func (c *operatorClient) ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAgentsResponse)
+	err := c.cc.Invoke(ctx, Operator_ListAgents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorClient) GetAgentStatus(ctx context.Context, in *AgentStatusRequest, opts ...grpc.CallOption) (*AgentStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentStatusResponse)
+	err := c.cc.Invoke(ctx, Operator_GetAgentStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorClient) TriggerSync(ctx context.Context, in *TriggerSyncRequest, opts ...grpc.CallOption) (*TriggerSyncResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TriggerSyncResponse)
+	err := c.cc.Invoke(ctx, Operator_TriggerSync_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// OperatorServer is the server API for Operator service.
+// All implementations must embed UnimplementedOperatorServer
+// for forward compatibility.
+type OperatorServer interface {
+	ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error)
+	GetAgentStatus(context.Context, *AgentStatusRequest) (*AgentStatusResponse, error)
+	TriggerSync(context.Context, *TriggerSyncRequest) (*TriggerSyncResponse, error)
+	mustEmbedUnimplementedOperatorServer()
+}
+
+// UnimplementedOperatorServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedOperatorServer struct{}
+
+func (UnimplementedOperatorServer) ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAgents not implemented")
+}
+func (UnimplementedOperatorServer) GetAgentStatus(context.Context, *AgentStatusRequest) (*AgentStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAgentStatus not implemented")
+}
+func (UnimplementedOperatorServer) TriggerSync(context.Context, *TriggerSyncRequest) (*TriggerSyncResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TriggerSync not implemented")
+}
+func (UnimplementedOperatorServer) mustEmbedUnimplementedOperatorServer() {}
+func (UnimplementedOperatorServer) testEmbeddedByValue()                  {}
+
+// UnsafeOperatorServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to OperatorServer will
+// result in compilation errors.
+type UnsafeOperatorServer interface {
+	mustEmbedUnimplementedOperatorServer()
+}
+
+func RegisterOperatorServer(s grpc.ServiceRegistrar, srv OperatorServer) {
+	// If the following call panics, it indicates UnimplementedOperatorServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Operator_ServiceDesc, srv)
+}
+
+func _Operator_ListAgents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAgentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorServer).ListAgents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Operator_ListAgents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorServer).ListAgents(ctx, req.(*ListAgentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Operator_GetAgentStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AgentStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorServer).GetAgentStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Operator_GetAgentStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorServer).GetAgentStatus(ctx, req.(*AgentStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Operator_TriggerSync_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TriggerSyncRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorServer).TriggerSync(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Operator_TriggerSync_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorServer).TriggerSync(ctx, req.(*TriggerSyncRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Operator_ServiceDesc is the grpc.ServiceDesc for Operator service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Operator_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "master.Operator",
+	HandlerType: (*OperatorServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListAgents",
+			Handler:    _Operator_ListAgents_Handler,
+		},
+		{
+			MethodName: "GetAgentStatus",
+			Handler:    _Operator_GetAgentStatus_Handler,
+		},
+		{
+			MethodName: "TriggerSync",
+			Handler:    _Operator_TriggerSync_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/master.proto",
+}

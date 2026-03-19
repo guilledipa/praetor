@@ -4,4 +4,5 @@ use (
 	./agent
 	./master
 	./pkg
+	./cli
 )

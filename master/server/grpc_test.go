@@ -12,9 +12,24 @@ import (
 	pb "github.com/guilledipa/praetor/proto/gen/master"
 )
 
-type mockStore struct{}
+type mockStore struct{
+	savedReports []*pb.ResourceReport
+}
 
 func (m *mockStore) StoreReport(ctx context.Context, nodeID string, report *pb.ResourceReport) error {
+	m.savedReports = append(m.savedReports, report)
+	return nil
+}
+
+func (m *mockStore) ListAgents(ctx context.Context) ([]string, error) {
+	return []string{}, nil
+}
+
+func (m *mockStore) GetAgentReports(ctx context.Context, nodeID string) ([]*pb.ResourceReport, error) {
+	return []*pb.ResourceReport{}, nil
+}
+
+func (m *mockStore) StoreAuditLog(ctx context.Context, action string, targetNode string, operatorID string) error {
 	return nil
 }
 

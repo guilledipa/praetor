@@ -75,3 +75,41 @@ message SignCSRResponse {
   // PEM encoded signed certificate
   string certificate_pem = 1;
 }
+
+service Operator {
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse) {}
+  rpc GetAgentStatus(AgentStatusRequest) returns (AgentStatusResponse) {}
+  rpc TriggerSync(TriggerSyncRequest) returns (TriggerSyncResponse) {}
+}
+
+message ListAgentsRequest {}
+
+message AgentSummary {
+  string node_id = 1;
+  bool is_compliant = 2;
+  int64 last_reported_at = 3;
+}
+
+message ListAgentsResponse {
+  repeated AgentSummary agents = 1;
+}
+
+message AgentStatusRequest {
+  string node_id = 1;
+}
+
+message AgentStatusResponse {
+  string node_id = 1;
+  bool is_compliant = 2;
+  int64 last_reported_at = 3;
+  repeated ResourceReport resources = 4;
+}
+
+message TriggerSyncRequest {
+  string node_id = 1;
+}
+
+message TriggerSyncResponse {
+  bool success = 1;
+  string message = 2;
+}

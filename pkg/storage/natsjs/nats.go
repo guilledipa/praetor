@@ -14,6 +14,7 @@ import (
 )
 
 type natsProvider struct {
+	js jetstream.JetStream
 	kv jetstream.KeyValue
 }
 
@@ -34,7 +35,17 @@ func NewProvider(ctx context.Context, nc *nats.Conn) (storage.Provider, error) {
 		return nil, fmt.Errorf("failed to bind KV bucket: %w", err)
 	}
 
-	return &natsProvider{kv: kv}, nil
+	// Boot an Audit Stream specifically for retaining operator actions permanently
+	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:     "PRAETOR_AUDIT",
+		Subjects: []string{"audit.commands.>"},
+		Storage:  jetstream.FileStorage, // Durable
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind Audit stream: %w", err)
+	}
+
+	return &natsProvider{js: js, kv: kv}, nil
 }
 
 // ReportLog implements the persistent JSON compliance trace
@@ -75,6 +86,94 @@ func (p *natsProvider) StoreReport(ctx context.Context, nodeID string, report *m
 	_, err = p.kv.Put(ctx, key, payload)
 	if err != nil {
 		return fmt.Errorf("failed pushing state to JetStream KV: %w", err)
+	}
+
+	return nil
+}
+
+func (p *natsProvider) ListAgents(ctx context.Context) ([]string, error) {
+	keys, err := p.kv.Keys(ctx)
+	if err != nil {
+		if err == jetstream.ErrNoKeysFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	agentMap := make(map[string]bool)
+	for _, k := range keys {
+		parts := strings.SplitN(k, ".", 2)
+		if len(parts) > 0 {
+			agentMap[parts[0]] = true
+		}
+	}
+
+	var agents []string
+	for a := range agentMap {
+		agents = append(agents, a)
+	}
+	return agents, nil
+}
+
+func (p *natsProvider) GetAgentReports(ctx context.Context, nodeID string) ([]*master.ResourceReport, error) {
+	keys, err := p.kv.Keys(ctx)
+	if err != nil {
+		if err == jetstream.ErrNoKeysFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var reports []*master.ResourceReport
+	prefix := sanitizeKey(nodeID) + "."
+	for _, k := range keys {
+		if strings.HasPrefix(k, prefix) {
+			entry, err := p.kv.Get(ctx, k)
+			if err != nil {
+				continue
+			}
+
+			var log ReportLog
+			if err := json.Unmarshal(entry.Value(), &log); err != nil {
+				continue
+			}
+
+			reports = append(reports, &master.ResourceReport{
+				Type:      log.ResourceType,
+				Id:        log.ResourceID,
+				Compliant: log.Compliant,
+				Message:   log.Message,
+			})
+		}
+	}
+
+	return reports, nil
+}
+
+type AuditLog struct {
+	Timestamp  string `json:"timestamp"`
+	Action     string `json:"action"`
+	TargetNode string `json:"target_node"`
+	OperatorID string `json:"operator_id"`
+}
+
+func (p *natsProvider) StoreAuditLog(ctx context.Context, action string, targetNode string, operatorID string) error {
+	logEntry := AuditLog{
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Action:     action,
+		TargetNode: targetNode,
+		OperatorID: operatorID,
+	}
+
+	payload, err := json.Marshal(logEntry)
+	if err != nil {
+		return fmt.Errorf("failed to marshal audit entry: %w", err)
+	}
+
+	subject := fmt.Sprintf("audit.commands.%s", sanitizeKey(targetNode))
+	_, err = p.js.Publish(ctx, subject, payload)
+	if err != nil {
+		return fmt.Errorf("failed to drop audit into stream: %w", err)
 	}
 
 	return nil

@@ -30,6 +30,8 @@ build:
 	@cd agent && go build -o ../bin/agent ./cmd/agent
 	@echo "Building Master binary..."
 	@cd master && go build -o ../bin/master ./cmd/master
+	@echo "Building praetorctl binary..."
+	@cd cli && go build -o ../bin/praetorctl ./cmd/praetorctl
 	@echo "Binaries exported to ./bin/"
 
 clean:
