@@ -333,55 +333,83 @@ func fetchAndApplyCatalog(cfg Config, masterClient masterpb.ConfigurationMasterC
 	logger.Info("DAG built successfully", "nodes", len(sortedResources))
 
 	// 3. Linearly Enforce the Sorted DAG
+	failedNodes := make(map[string]bool)
 	for _, res := range sortedResources {
+		selfKey := fmt.Sprintf("%s[%s]", res.Type(), res.ID())
 
-			report := &masterpb.ResourceReport{
-				Type: res.Type(),
-				Id: res.ID(),
-				Compliant: true,
-				Message: "Resource is compliant",
-			}
-	
-			resLogger := logger.With("resource_type", res.Type(), "resource_id", res.ID())
-	
-			currentState, err := res.Get()
-			if err != nil {
-				resLogger.Error("Error getting state", "error", err)
-				report.Compliant = false
-				report.Message = fmt.Sprintf("Error getting state: %v", err)
-				reports = append(reports, report)
-				allCompliant = false
-				continue
-			}
-	
-			isCompliant, err := res.Test(currentState)
-			if err != nil {
-				resLogger.Error("Error testing state", "error", err)
-				report.Compliant = false
-				report.Message = fmt.Sprintf("Error testing state: %v", err)
-				reports = append(reports, report)
-				allCompliant = false
-				continue
-			}
-	
-			if !isCompliant {
-				allCompliant = false
-				report.Compliant = false
-				resLogger.Info("Drift detected. Enforcing desired state...")
-				err := res.Set()
-				if err != nil {
-						report.Message = fmt.Sprintf("Failed to enforce: %v", err)
-						resLogger.Error("Error setting state", "error", err)
-				} else {
-						report.Message = "Drift detected but successfully enforced state"
-						report.Compliant = true // Technically compliant now
-						resLogger.Info("Successfully enforced state")
-				}
-			} else {
-					resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
-			}
-			reports = append(reports, report)
+		report := &masterpb.ResourceReport{
+			Type:      res.Type(),
+			Id:        res.ID(),
+			Compliant: true,
+			Message:   "Resource is compliant",
 		}
+
+		resLogger := logger.With("resource_type", res.Type(), "resource_id", res.ID())
+
+		// Pre-Execution Dependency Check
+		skip := false
+		skipReason := ""
+		allDeps := append(res.Requires(), res.Before()...)
+		for _, dep := range allDeps {
+			depKey := fmt.Sprintf("%s[%s]", dep.Kind, dep.Name)
+			if failedNodes[depKey] {
+				skip = true
+				skipReason = fmt.Sprintf("Skipped: Dependency %s failed", depKey)
+				break
+			}
+		}
+
+		if skip {
+			resLogger.Warn("Skipping resource due to failed dependency", "reason", skipReason)
+			report.Compliant = false
+			report.Message = skipReason
+			failedNodes[selfKey] = true
+			reports = append(reports, report)
+			allCompliant = false
+			continue
+		}
+
+		currentState, err := res.Get()
+		if err != nil {
+			resLogger.Error("Error getting state", "error", err)
+			report.Compliant = false
+			report.Message = fmt.Sprintf("Error getting state: %v", err)
+			reports = append(reports, report)
+			allCompliant = false
+			failedNodes[selfKey] = true
+			continue
+		}
+
+		isCompliant, err := res.Test(currentState)
+		if err != nil {
+			resLogger.Error("Error testing state", "error", err)
+			report.Compliant = false
+			report.Message = fmt.Sprintf("Error testing state: %v", err)
+			reports = append(reports, report)
+			allCompliant = false
+			failedNodes[selfKey] = true
+			continue
+		}
+
+		if !isCompliant {
+			allCompliant = false
+			report.Compliant = false
+			resLogger.Info("Drift detected. Enforcing desired state...")
+			err := res.Set()
+			if err != nil {
+				report.Message = fmt.Sprintf("Failed to enforce: %v", err)
+				resLogger.Error("Error setting state", "error", err)
+				failedNodes[selfKey] = true
+			} else {
+				report.Message = "Drift detected but successfully enforced state"
+				report.Compliant = true // Technically compliant now
+				resLogger.Info("Successfully enforced state")
+			}
+		} else {
+			resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
+		}
+		reports = append(reports, report)
+	}
 
 		logger.Info("--- Configuration Check Finished ---")
 		

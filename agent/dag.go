@@ -10,7 +10,11 @@ func buildNodeName(kind, id string) string {
 	return fmt.Sprintf("%s[%s]", kind, id)
 }
 
-// buildDAG topologically sorts the resource slice using Kahn's algorithm
+// buildDAG topologically sorts the resource slice using Kahn's algorithm.
+// We explicitly chose Kahn's over Depth-First Search (DFS) because Kahn's
+// evaluates in-degrees natively, allowing us to proactively detect and error out
+// on cyclic loops (e.g. A requires B, B requires A) during the O(V+E) sort
+// without needing complex recursion stack traces.
 func buildDAG(rawList []resources.Resource) ([]resources.Resource, error) {
 	nodeNames := make([]string, len(rawList))
 	resMap := make(map[string]resources.Resource)
