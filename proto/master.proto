@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package master;
+
+option go_package = "github.com/guilledipa/praetor/proto/gen/master;master";
+
+service ConfigurationMaster {
+  // Requests the configuration catalog for the node.
+  rpc GetCatalog(GetCatalogRequest) returns (GetCatalogResponse) {}
+}
+
+message GetCatalogRequest {
+  // Node identifier, e.g., hostname or certificate CN.
+  string node_id = 1;
+  // Node facts, as key-value pairs.
+  map<string, string> facts = 2;
+}
+
+message Catalog {
+  // Raw catalog content (e.g., YAML or JSON string).
+  string content = 1;
+  // Format of the content (e.g., "yaml", "json").
+  string format = 2;
+}
+
+message GetCatalogResponse {
+  // The compiled catalog for the node.
+  Catalog catalog = 1;
+  // Digital signature of the catalog content.
+  bytes signature = 2;
+  // Algorithm used for signing (e.g., "ed25519").
+  string signature_algorithm = 3;
+}

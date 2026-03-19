@@ -1,0 +1,22 @@
+apiVersion: praetor.io/v1alpha1
+kind: Catalog
+metadata:
+  name: default-catalog
+spec:
+  resources:
+    - apiVersion: praetor.io/v1alpha1
+      kind: File
+      metadata:
+        name: managed-by-master
+      spec:
+        path: /tmp/managed_by_master.txt
+        content: "This file is managed by the MASTER (v4).\nHostname: {{ .facts.hostname }}\nOS: {{ .facts.os }}"
+        ensure: present
+        mode: "0644"
+    - apiVersion: praetor.io/v1alpha1
+      kind: File
+      metadata:
+        name: to-be-deleted
+      spec:
+        path: /tmp/to_be_deleted.txt
+        ensure: absent
