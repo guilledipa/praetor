@@ -179,39 +179,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n", m.err)
-	}
-	if m.loading {
-		return "Summoning the Legions...\n"
-	}
-
-	left := agentListStyle.Render(m.list.View())
-
-	rightContent := "Select a Centurion (Node) to view compliance details\nPress Enter to inspect. Press 'r' to refresh cohort. Press 's' to manually trigger Sync."
-	if m.selected != nil {
-		rightContent = lipgloss.NewStyle().Foreground(gold).Bold(true).Render("Node: " + m.selected.NodeId) + "\n\n"
-		if m.selected.IsCompliant {
-			rightContent += statusOK.String() + " Fully Compliant\n\n"
-		} else {
-			rightContent += statusErr.String() + " Drift Detected\n\n"
-		}
-		rightContent += "Resource Trace Logs:\n"
-		for _, r := range m.selected.Resources {
-			icon := statusOK.String()
-			if !r.Compliant {
-				icon = statusErr.String()
-			}
-			msgStr := r.Message
-			if len(msgStr) > 40 {
-				msgStr = msgStr[:37] + "..."
-			}
-			rightContent += fmt.Sprintf("  %s [%s]\t%s\t%s\n", icon, r.Type, r.Id, msgStr)
-		}
-	}
-	
-	right := detailStyle.Render(rightContent)
-	
 	header := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(marbleWhite).
@@ -221,7 +188,52 @@ func (m model) View() string {
 		Padding(1).
 		Render("⚜  PRAETOR OPERATOR DASHBOARD  ⚜")
 
-	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	var body string
+	if m.err != nil {
+		body = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(crimsonRed).
+			Foreground(crimsonRed).
+			Padding(2).
+			Width(94).
+			Align(lipgloss.Center).
+			Render(fmt.Sprintf("Failed to communicate with Praetor Master Broker!\n\n%v\n\nEnsure docker-compose is running and certificates are generated.\nPress 'q' to retreat.", m.err))
+	} else if m.loading {
+		body = lipgloss.NewStyle().
+			Foreground(gold).
+			Padding(2).
+			Width(96).
+			Align(lipgloss.Center).
+			Render("Summoning the Legions... (Connecting to Master)")
+	} else {
+		left := agentListStyle.Render(m.list.View())
+
+		rightContent := "Select a Centurion (Node) to view compliance details\nPress Enter to inspect. Press 'r' to refresh cohort. Press 's' to manually trigger Sync."
+		if m.selected != nil {
+			rightContent = lipgloss.NewStyle().Foreground(gold).Bold(true).Render("Node: " + m.selected.NodeId) + "\n\n"
+			if m.selected.IsCompliant {
+				rightContent += statusOK.String() + " Fully Compliant\n\n"
+			} else {
+				rightContent += statusErr.String() + " Drift Detected\n\n"
+			}
+			rightContent += "Resource Trace Logs:\n"
+			for _, r := range m.selected.Resources {
+				icon := statusOK.String()
+				if !r.Compliant {
+					icon = statusErr.String()
+				}
+				msgStr := r.Message
+				if len(msgStr) > 40 {
+					msgStr = msgStr[:37] + "..."
+				}
+				rightContent += fmt.Sprintf("  %s [%s]\t%s\t%s\n", icon, r.Type, r.Id, msgStr)
+			}
+		}
+		
+		right := detailStyle.Render(rightContent)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	}
+
 	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, body))
 }
 
