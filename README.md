@@ -236,6 +236,18 @@ nats --tlscert ./nats/certs/client.crt --tlskey ./nats/certs/client.key --tlsca 
     (e.g., files, packages, services). Each resource type has a defined schema
     and implements the `resources.Resource` interface.
 
+## Project Structure
+
+Praetor follows a modular go workspace approach:
+
+*   **`agent/`**: Contains the agent application, including its `main.go` entrypoint, local `facts/` collectors, and the enforcement logic for `resources/`.
+*   **`master/`**: Contains the master application, `main.go` entrypoint, and the `catalog/` compilation logic.
+*   **`pkg/`**: Core shared libraries that are agnostic to the specific binary running them. 
+    *   Currently houses the `broker/` package for pluggable messaging (e.g., NATS). 
+    *   Future shared utilities (like logging, TLS helpers, or auth libraries) should be placed here.
+*   **`schema/`**: Shared structs and validation logic for the configuration catalog to ensure both Master and Agent agree on resource definitions.
+*   **`proto/`**: gRPC interface definitions and the resulting generated code.
+
 ## Developing New Fact Providers
 
 To add a new source of custom facts:
@@ -355,8 +367,7 @@ To add support for a new resource type (e.g., `crontab`):
 ## Proto Generation
 
 If you modify `proto/master.proto`, you need to regenerate the Go code using `protoc`.
-Run the following command from the project root directory
-(`/google/src/cloud/guillermodp/head-citc-fig/google3/experimental/users/guillermodp/praetor`):
+Run the following command from the project root directory:
 
 ```bash
 protoc --go_out=./proto/gen/master --go-grpc_out=./proto/gen/master proto/master.proto --go_opt=module=github.com/guilledipa/praetor/proto/gen/master --go-grpc_opt=module=github.com/guilledipa/praetor/proto/gen/master
