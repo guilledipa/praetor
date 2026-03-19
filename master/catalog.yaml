@@ -10,7 +10,7 @@ spec:
         name: managed-by-master
       spec:
         path: /tmp/managed_by_master.txt
-        content: "This file is managed by the MASTER (v4).\nHostname: {{ .facts.hostname }}\nOS: {{ .facts.os }}"
+        content: "This file is managed by the MASTER (v4).\nHostname: {{ .facts.hostname }}\nOS: {{ .facts.os }}\nDB_PASSWORD: {{ secret \"default\" \"db-creds\" \"password\" }}"
         ensure: present
         mode: "0644"
     - apiVersion: praetor.io/v1alpha1

@@ -21,6 +21,8 @@ import (
 	"github.com/guilledipa/praetor/master/catalog"
 	"github.com/guilledipa/praetor/pkg/broker"
 	"github.com/guilledipa/praetor/pkg/broker/nats"
+	"github.com/guilledipa/praetor/pkg/secrets"
+	"github.com/guilledipa/praetor/pkg/secrets/local"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
 	"github.com/kelseyhightower/envconfig"
 	"google.golang.org/grpc"
@@ -49,6 +51,7 @@ type MasterConfig struct {
 type server struct {
 	pb.UnimplementedConfigurationMasterServer
 	signingKey ed25519.PrivateKey
+	secretProv secrets.Provider
 }
 
 func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
@@ -107,10 +110,10 @@ func (s *server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 		rawResources = append(rawResources, raw)
 	}
 
-	// Hydrate the resources
-	hydratedResources, err := catalog.HydrateCatalog(rawResources, receivedFacts)
+	// 3. Hydrate catalog with secrets and facts
+	hydratedResources, err := catalog.HydrateCatalog(rawResources, receivedFacts, s.secretProv)
 	if err != nil {
-		reqLogger.Error("Error hydrating catalog", "error", err)
+		logger.Error("Failed to hydrate catalog", "error", err)
 		return nil, fmt.Errorf("failed to hydrate catalog: %w", err)
 	}
 
@@ -403,7 +406,12 @@ func main() {
 
 	// Create gRPC server
 	s := grpc.NewServer(grpc.Creds(creds))
-	pb.RegisterConfigurationMasterServer(s, &server{signingKey: signingKey})
+	// Load Secrets Provider
+	secretProv, err := local.NewProvider("secrets.yaml")
+	if err != nil {
+		logger.Warn("Failed to load secrets.yaml, providing blank secret fallback", "error", err)
+	}
+	pb.RegisterConfigurationMasterServer(s, &server{signingKey: signingKey, secretProv: secretProv})
 	reflection.Register(s)
 
 	lis, err := net.Listen("tcp", port)

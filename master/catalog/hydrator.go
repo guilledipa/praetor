@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/guilledipa/praetor/pkg/secrets"
 	"github.com/guilledipa/praetor/schema"
 	"gopkg.in/yaml.v3"
 	"reflect"
@@ -13,8 +14,8 @@ import (
 	"text/template"
 )
 
-// HydrateCatalog processes a list of raw JSON resources, hydrating template strings with facts.
-func HydrateCatalog(rawResources []json.RawMessage, facts map[string]string) ([]any, error) {
+// HydrateCatalog processes a list of raw JSON resources, hydrating template strings with facts and secrets.
+func HydrateCatalog(rawResources []json.RawMessage, facts map[string]string, secProv secrets.Provider) ([]any, error) {
 	hydratedResources := make([]any, 0, len(rawResources))
 
 	for i, resData := range rawResources {
@@ -30,7 +31,7 @@ func HydrateCatalog(rawResources []json.RawMessage, facts map[string]string) ([]
 		case "File":
 			var res schema.File
 			if err = yaml.Unmarshal(resData, &res); err == nil {
-				err = hydrateStruct(&res.Spec, facts)
+				err = hydrateStruct(&res.Spec, facts, secProv)
 				hydratedResource = res
 			}
 		// Add other resource kinds here as they are defined in schema/
@@ -38,7 +39,7 @@ func HydrateCatalog(rawResources []json.RawMessage, facts map[string]string) ([]
 			// For unknown kinds, try to unmarshal to a generic map and hydrate strings
 			var genericRes map[string]any
 			if err = yaml.Unmarshal(resData, &genericRes); err == nil {
-				err = hydrateGenericMap(genericRes, facts)
+				err = hydrateGenericMap(genericRes, facts, secProv)
 				hydratedResource = genericRes
 			} else {
 				return nil, fmt.Errorf("resource %d: unknown kind '%s' and failed to unmarshal as generic map: %w", i, typeMeta.Kind, err)
@@ -54,13 +55,13 @@ func HydrateCatalog(rawResources []json.RawMessage, facts map[string]string) ([]
 	return hydratedResources, nil
 }
 
-func hydrateStruct(target any, facts map[string]string) error {
+func hydrateStruct(target any, facts map[string]string, secProv secrets.Provider) error {
 	v := reflect.ValueOf(target).Elem()
 	for i := 0; i < v.NumField(); i++ {
 		f := v.Field(i)
 		if f.Kind() == reflect.String {
 			orig := f.String()
-			hydrated, err := processTemplate(orig, facts)
+			hydrated, err := processTemplate(orig, facts, secProv)
 			if err != nil {
 				return fmt.Errorf("field %s: %w", v.Type().Field(i).Name, err)
 			}
@@ -73,27 +74,27 @@ func hydrateStruct(target any, facts map[string]string) error {
 	return nil
 }
 
-func hydrateGenericMap(data map[string]any, facts map[string]string) error {
+func hydrateGenericMap(data map[string]any, facts map[string]string, secProv secrets.Provider) error {
 	for key, value := range data {
 		switch val := value.(type) {
 		case string:
-			hydrated, err := processTemplate(val, facts)
+			hydrated, err := processTemplate(val, facts, secProv)
 			if err != nil {
 				return fmt.Errorf("key %s: %w", key, err)
 			}
 			data[key] = hydrated
 		case map[string]any:
-			if err := hydrateGenericMap(val, facts); err != nil {
+			if err := hydrateGenericMap(val, facts, secProv); err != nil {
 				return err
 			}
 		case []any:
 			for i, item := range val {
 				if itemMap, ok := item.(map[string]any); ok {
-					if err := hydrateGenericMap(itemMap, facts); err != nil {
+					if err := hydrateGenericMap(itemMap, facts, secProv); err != nil {
 						return err
 					}
 				} else if itemStr, ok := item.(string); ok {
-					hydrated, err := processTemplate(itemStr, facts)
+					hydrated, err := processTemplate(itemStr, facts, secProv)
 					if err != nil {
 						return fmt.Errorf("list item %d: %w", i, err)
 					}
@@ -105,12 +106,19 @@ func hydrateGenericMap(data map[string]any, facts map[string]string) error {
 	return nil
 }
 
-func processTemplate(tmplStr string, facts map[string]string) (string, error) {
+func processTemplate(tmplStr string, facts map[string]string, secProv secrets.Provider) (string, error) {
 	if !strings.Contains(tmplStr, "{{") {
 		return tmplStr, nil // No template markers
 	}
 
-	tmpl, err := template.New("hydrate").Parse(tmplStr)
+	tmpl, err := template.New("hydrate").Funcs(template.FuncMap{
+		"secret": func(namespace, name, key string) (string, error) {
+			if secProv == nil {
+				return "", fmt.Errorf("no secret provider configured")
+			}
+			return secProv.GetSecret(namespace, name, key)
+		},
+	}).Parse(tmplStr)
 	if err != nil {
 		return tmplStr, fmt.Errorf("template parse error: %w", err)
 	}
