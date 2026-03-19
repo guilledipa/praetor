@@ -7,7 +7,7 @@ import (
 
 	"github.com/guilledipa/praetor/agent/app"
 	"github.com/guilledipa/praetor/agent/pki"
-	"github.com/kelseyhightower/envconfig"
+	"github.com/spf13/viper"
 
 	_ "github.com/guilledipa/praetor/agent/facts/core"
 	_ "github.com/guilledipa/praetor/agent/resources/exec"
@@ -17,9 +17,17 @@ import (
 )
 
 func main() {
+	viper.SetEnvPrefix("PRAETOR_AGENT")
+	viper.AutomaticEnv()
+	viper.SetConfigFile("/etc/praetor/agent.yaml")
+
+	if err := viper.ReadInConfig(); err != nil {
+		log.Printf("No config file found or error reading it: %v - falling back to env vars", err)
+	}
+
 	var cfg app.Config
-	if err := envconfig.Process("AGENT", &cfg); err != nil {
-		log.Fatalf("Failed to process config: %v", err)
+	if err := viper.Unmarshal(&cfg); err != nil {
+		log.Fatalf("Failed to marshal config: %v", err)
 	}
 
 	var logLevel slog.Level

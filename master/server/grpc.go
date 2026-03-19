@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/guilledipa/praetor/master/catalog"
 	"github.com/guilledipa/praetor/master/classifier"
 	"github.com/guilledipa/praetor/pkg/secrets"
 	"github.com/guilledipa/praetor/pkg/storage"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
+	"go.opentelemetry.io/otel"
 )
 
 // Server implements master.ConfigurationMasterServer
@@ -36,13 +38,26 @@ func NewServer(signingKey ed25519.PrivateKey, secretProv secrets.Provider, store
 
 // GetCatalog implements master.ConfigurationMasterServer
 func (s *Server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.GetCatalogResponse, error) {
+	ctx, span := otel.Tracer("master-server").Start(ctx, "GetCatalog")
+	defer span.End()
+
 	nodeID := in.GetNodeId()
 	receivedFacts := in.GetFacts()
 	reqLogger := s.Logger.With("node_id", nodeID)
 	reqLogger.Info("Received GetCatalog request", "facts", receivedFacts)
 
 	// 1. Evaluate Classifications
-	rawResources, err := s.Classifier.Evaluate(nodeID, receivedFacts)
+	var rawResources []json.RawMessage
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("classifier evaluation panicked: %v", r)
+			}
+		}()
+		rawResources, err = s.Classifier.Evaluate(nodeID, receivedFacts)
+	}()
+
 	if err != nil {
 		reqLogger.Error("Error evaluating classifier", "error", err)
 		return nil, fmt.Errorf("classifier evaluation failed: %w", err)
@@ -99,7 +114,9 @@ func (s *Server) ReportState(ctx context.Context, req *pb.ReportStateRequest) (*
 	s.Logger.Info("Received state report from agent", "node_id", req.NodeId, "resource_count", len(req.Resources))
 
 	for _, rep := range req.Resources {
-		err := s.Store.StoreReport(ctx, req.NodeId, rep)
+		storeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := s.Store.StoreReport(storeCtx, req.NodeId, rep)
+		cancel()
 		if err != nil {
 			s.Logger.Error("Failed to persist report state into JetStream", "node_id", req.NodeId, "resource_id", rep.GetId(), "error", err)
 		} else {

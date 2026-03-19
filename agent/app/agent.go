@@ -11,22 +11,23 @@ import (
 	"github.com/guilledipa/praetor/agent/pki"
 	masterpb "github.com/guilledipa/praetor/proto/gen/master"
 	"github.com/nats-io/nats.go"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
 
 type Config struct {
-	NatsURL             string
-	NatsClientCert      string
-	NatsClientKey       string
-	NatsRootCA          string
-	MasterGRPCAddress   string
-	MasterClientCert    string
-	MasterClientKey     string
-	MasterRootCA        string
-	NodeID              string
-	LogLevel            string
-	AgentBootstrapToken string
+	NatsURL             string `mapstructure:"nats_url"`
+	NatsClientCert      string `mapstructure:"nats_client_cert"`
+	NatsClientKey       string `mapstructure:"nats_client_key"`
+	NatsRootCA          string `mapstructure:"nats_root_ca"`
+	MasterGRPCAddress   string `mapstructure:"master_grpc_address"`
+	MasterClientCert    string `mapstructure:"master_client_cert"`
+	MasterClientKey     string `mapstructure:"master_client_key"`
+	MasterRootCA        string `mapstructure:"master_root_ca"`
+	NodeID              string `mapstructure:"node_id"`
+	LogLevel            string `mapstructure:"log_level"`
+	AgentBootstrapToken string `mapstructure:"agent_bootstrap_token"`
 }
 
 type Agent struct {
@@ -122,7 +123,21 @@ func connectNATS(natsURL string, tlsConfig *tls.Config) (*nats.Conn, error) {
 		nats.ReconnectWait(2 * time.Second),
 		nats.MaxReconnects(-1),
 	}
-	return nats.Connect(natsURL, opts...)
+	var nc *nats.Conn
+	var err error
+	maxRetries := 10
+	for i := 0; i < maxRetries; i++ {
+		nc, err = nats.Connect(natsURL, opts...)
+		if err == nil {
+			return nc, nil
+		}
+		backoff := time.Duration(1<<i) * time.Second
+		if backoff > 30*time.Second {
+			backoff = 30 * time.Second
+		}
+		time.Sleep(backoff)
+	}
+	return nil, fmt.Errorf("failed to connect to NATS after %d attempts: %w", maxRetries, err)
 }
 
 func connectMasterGRPC(cfg Config, tlsConfig *tls.Config) (masterpb.ConfigurationMasterClient, *grpc.ClientConn, error) {
@@ -130,6 +145,7 @@ func connectMasterGRPC(cfg Config, tlsConfig *tls.Config) (masterpb.Configuratio
 	conn, err := grpc.Dial(
 		cfg.MasterGRPCAddress,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to dial master gRPC server: %w", err)

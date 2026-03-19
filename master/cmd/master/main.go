@@ -21,20 +21,21 @@ import (
 	"github.com/guilledipa/praetor/pkg/storage/natsjs"
 	natsgo "github.com/nats-io/nats.go"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
-	"github.com/kelseyhightower/envconfig"
+	"github.com/spf13/viper"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 )
 
 type MasterConfig struct {
-	NatsURL         string        `envconfig:"NATS_URL" default:"nats://localhost:4222"`
-	NatsClientCert  string        `envconfig:"NATS_CLIENT_CERT" default:"../nats/certs/client.crt"`
-	NatsClientKey   string        `envconfig:"NATS_CLIENT_KEY" default:"../nats/certs/client.key"`
-	NatsRootCA      string        `envconfig:"NATS_ROOT_CA" default:"../nats/certs/ca.crt"`
-	TriggerInterval time.Duration `envconfig:"TRIGGER_INTERVAL" default:"15s"`
-	TargetNodeID    string        `envconfig:"TARGET_NODE_ID" default:"agent1"`
-	BootstrapToken  string        `envconfig:"BOOTSTRAP_TOKEN" default:"praetor-secret-token"`
+	NatsURL         string        `mapstructure:"nats_url"`
+	NatsClientCert  string        `mapstructure:"nats_client_cert"`
+	NatsClientKey   string        `mapstructure:"nats_client_key"`
+	NatsRootCA      string        `mapstructure:"nats_root_ca"`
+	TriggerInterval time.Duration `mapstructure:"trigger_interval"`
+	TargetNodeID    string        `mapstructure:"target_node_id"`
+	BootstrapToken  string        `mapstructure:"bootstrap_token"`
 }
 
 func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
@@ -90,8 +91,24 @@ func main() {
 
 	logger.Info("Master server starting...")
 
+	viper.SetEnvPrefix("PRAETOR_MASTER")
+	viper.AutomaticEnv()
+	viper.SetConfigFile("/etc/praetor/master.yaml")
+
+	if err := viper.ReadInConfig(); err != nil {
+		logger.Warn("Failed to read config file, falling back to env vars", "error", err)
+	}
+
+	viper.SetDefault("nats_url", "nats://localhost:4222")
+	viper.SetDefault("nats_client_cert", "../nats/certs/client.crt")
+	viper.SetDefault("nats_client_key", "../nats/certs/client.key")
+	viper.SetDefault("nats_root_ca", "../nats/certs/ca.crt")
+	viper.SetDefault("trigger_interval", "15s")
+	viper.SetDefault("target_node_id", "agent1")
+	viper.SetDefault("bootstrap_token", "praetor-secret-token")
+
 	var cfg MasterConfig
-	if err := envconfig.Process("MASTER", &cfg); err != nil {
+	if err := viper.Unmarshal(&cfg); err != nil {
 		logger.Error("Failed to process master config", "error", err)
 		os.Exit(1)
 	}
@@ -133,7 +150,7 @@ func main() {
 	}
 
 	bootCreds := credentials.NewServerTLSFromCert(&serverCert)
-	bootServer := grpc.NewServer(grpc.Creds(bootCreds))
+	bootServer := grpc.NewServer(grpc.Creds(bootCreds), grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	pb.RegisterCertificateAuthorityServer(bootServer, server.NewCAServer(caX509Cert, caTLSCert.PrivateKey, cfg.BootstrapToken, logger))
 
 	bootLis, err := net.Listen("tcp", ":50052")
@@ -173,7 +190,7 @@ func main() {
 	}
 	creds := credentials.NewTLS(grpcTLSConfig)
 
-	s := grpc.NewServer(grpc.Creds(creds))
+	s := grpc.NewServer(grpc.Creds(creds), grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	secretProv, err := local.NewProvider("secrets.yaml")
 	if err != nil {
 		logger.Warn("Failed to load secrets.yaml", "error", err)

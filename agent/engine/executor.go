@@ -11,6 +11,8 @@ import (
 	"github.com/guilledipa/praetor/agent/facts"
 	"github.com/guilledipa/praetor/agent/resources"
 	masterpb "github.com/guilledipa/praetor/proto/gen/master"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // Catalog represents the structure of the catalog received from the master.
@@ -37,9 +39,12 @@ type Executor struct {
 }
 
 func (e *Executor) FetchAndApplyCatalog() {
+	ctx, span := otel.Tracer("agent-engine").Start(context.Background(), "FetchAndApplyCatalog")
+	defer span.End()
+
 	e.Logger.Info("--- Running Configuration Check ---")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	agentFacts := facts.Collect()
@@ -51,6 +56,8 @@ func (e *Executor) FetchAndApplyCatalog() {
 
 	resp, err := e.MasterClient.GetCatalog(ctx, &masterpb.GetCatalogRequest{NodeId: e.NodeID, Facts: stringFacts})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to get catalog")
 		e.Logger.Error("Error fetching catalog from master", "error", err)
 		return
 	}
@@ -65,6 +72,7 @@ func (e *Executor) FetchAndApplyCatalog() {
 	}
 
 	if !ed25519.Verify(e.MasterPubKey, []byte(catalogContent), signature) {
+		span.SetStatus(codes.Error, "Catalog signature failed verification")
 		e.Logger.Error("Catalog signature verification failed!")
 		return
 	}
@@ -123,6 +131,8 @@ func (e *Executor) FetchAndApplyCatalog() {
 	failedNodes := make(map[string]bool)
 	for _, res := range sortedResources {
 		selfKey := fmt.Sprintf("%s[%s]", res.Type(), res.ID())
+
+		_, resSpan := otel.Tracer("agent-engine").Start(ctx, fmt.Sprintf("Apply %s", selfKey))
 
 		report := &masterpb.ResourceReport{
 			Type:      res.Type(),
@@ -195,6 +205,11 @@ func (e *Executor) FetchAndApplyCatalog() {
 		} else {
 			resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
 		}
+		
+		if !report.Compliant {
+			resSpan.SetStatus(codes.Error, report.Message)
+		}
+		resSpan.End()
 		reports = append(reports, report)
 	}
 
