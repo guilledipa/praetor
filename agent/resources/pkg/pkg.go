@@ -128,12 +128,12 @@ func (p *Package) ID() string {
 
 // Requires returns resources this package must run after.
 func (p *Package) Requires() []schema.Dependency {
-	return p.Metadata.Requires
+	return p.ObjectMeta.Requires
 }
 
 // Before returns resources this package must explicitly run before.
 func (p *Package) Before() []schema.Dependency {
-	return p.Metadata.Before
+	return p.ObjectMeta.Before
 }
 
 // Get retrieves the current state of the package.
@@ -182,7 +182,8 @@ func (p *Package) Test(currentState resources.State) (bool, error) {
 	return true, nil
 }
 
-// Set enforces the desired state for the package.
+// Set enforces the desired state of the package.
+// TODO(Phase 8): Add Multi-OS support here (yum, dnf, zypper) evaluating facts.os before strictly depending on apt-get.
 func (p *Package) Set() error {
 	desiredEnsure := p.Spec.Ensure
 	if desiredEnsure == "latest" {

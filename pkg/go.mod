@@ -2,7 +2,10 @@ module github.com/guilledipa/praetor/pkg
 
 go 1.24.13
 
-require github.com/nats-io/nats.go v1.49.0
+require (
+	github.com/nats-io/nats.go v1.49.0
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/klauspost/compress v1.18.2 // indirect

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -194,13 +193,14 @@ func (s *server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 }
 
 // ReportState implements master.ConfigurationMasterServer
-func (s *server) ReportState(ctx context.Context, in *pb.ReportStateRequest) (*pb.ReportStateResponse, error) {
-	nodeID := in.GetNodeId()
-	isCompliant := in.GetIsCompliant()
+func (s *server) ReportState(ctx context.Context, req *pb.ReportStateRequest) (*pb.ReportStateResponse, error) {
+	logger.Info("Received state report from agent", "node_id", req.NodeId, "resource_count", len(req.Resources))
 	
-	logger.Info("Received state report", "node_id", nodeID, "is_compliant", isCompliant, "resources_checked", len(in.GetResources()))
-	for _, req := range in.GetResources() {
-		logger.Debug("Resource run", "node_id", nodeID, "type", req.GetType(), "id", req.GetId(), "compliant", req.GetCompliant(), "message", req.GetMessage())
+	// TODO(Phase 8): Implement a StorageProvider interface to persist these gRPC reports
+	// to a SQLite/PostgreSQL backend instead of immediately discarding them after logging.
+
+	for _, rep := range req.Resources {
+		logger.Debug("Resource run", "node_id", req.NodeId, "type", rep.GetType(), "id", rep.GetId(), "compliant", rep.GetCompliant(), "message", rep.GetMessage())
 	}
 	
 	return &pb.ReportStateResponse{Acknowledged: true}, nil
@@ -332,7 +332,7 @@ func startTriggerPublisher(b broker.Broker, cfg MasterConfig) {
 				agentID := key.(string)
 				subject := fmt.Sprintf("agent.trigger.getCatalog.%s", agentID)
 				logger.Debug("Publishing catalog trigger", "subject", subject)
-				err := b.PublishStream(subject, nil)
+				err := b.Publish(subject, nil)
 				if err != nil {
 					logger.Error("Failed to publish trigger message", "subject", subject, "error", err)
 				}

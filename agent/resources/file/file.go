@@ -41,12 +41,12 @@ func (f *File) ID() string {
 
 // Requires returns resources this file must run after.
 func (f *File) Requires() []schema.Dependency {
-	return f.Metadata.Requires
+	return f.ObjectMeta.Requires
 }
 
 // Before returns resources this file must explicitly run before.
 func (f *File) Before() []schema.Dependency {
-	return f.Metadata.Before
+	return f.ObjectMeta.Before
 }
 
 // Get retrieves the current state of the file.

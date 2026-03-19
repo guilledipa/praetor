@@ -38,12 +38,12 @@ func (s *Service) ID() string {
 
 // Requires returns resources this service must run after.
 func (s *Service) Requires() []schema.Dependency {
-	return s.Metadata.Requires
+	return s.ObjectMeta.Requires
 }
 
 // Before returns resources this service must explicitly run before.
 func (s *Service) Before() []schema.Dependency {
-	return s.Metadata.Before
+	return s.ObjectMeta.Before
 }
 
 func (s *Service) Get() (resources.State, error) {
