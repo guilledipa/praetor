@@ -16,6 +16,7 @@ services:
       dockerfile: master/Dockerfile
     ports:
       - "50051:50051"
+      - "50052:50052"
     depends_on:
       - nats
     environment:

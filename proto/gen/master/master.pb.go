@@ -377,6 +377,113 @@ func (x *ReportStateResponse) GetAcknowledged() bool {
 	return false
 }
 
+type SignCSRRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	NodeId string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	// A shared secret to authenticate the unprovisioned node
+	BootstrapToken string `protobuf:"bytes,2,opt,name=bootstrap_token,json=bootstrapToken,proto3" json:"bootstrap_token,omitempty"`
+	// PEM encoded Certificate Signing Request
+	CsrPem        string `protobuf:"bytes,3,opt,name=csr_pem,json=csrPem,proto3" json:"csr_pem,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignCSRRequest) Reset() {
+	*x = SignCSRRequest{}
+	mi := &file_proto_master_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignCSRRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignCSRRequest) ProtoMessage() {}
+
+func (x *SignCSRRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignCSRRequest.ProtoReflect.Descriptor instead.
+func (*SignCSRRequest) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SignCSRRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *SignCSRRequest) GetBootstrapToken() string {
+	if x != nil {
+		return x.BootstrapToken
+	}
+	return ""
+}
+
+func (x *SignCSRRequest) GetCsrPem() string {
+	if x != nil {
+		return x.CsrPem
+	}
+	return ""
+}
+
+type SignCSRResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// PEM encoded signed certificate
+	CertificatePem string `protobuf:"bytes,1,opt,name=certificate_pem,json=certificatePem,proto3" json:"certificate_pem,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SignCSRResponse) Reset() {
+	*x = SignCSRResponse{}
+	mi := &file_proto_master_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignCSRResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignCSRResponse) ProtoMessage() {}
+
+func (x *SignCSRResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_master_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignCSRResponse.ProtoReflect.Descriptor instead.
+func (*SignCSRResponse) Descriptor() ([]byte, []int) {
+	return file_proto_master_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SignCSRResponse) GetCertificatePem() string {
+	if x != nil {
+		return x.CertificatePem
+	}
+	return ""
+}
+
 var File_proto_master_proto protoreflect.FileDescriptor
 
 const file_proto_master_proto_rawDesc = "" +
@@ -407,11 +514,19 @@ const file_proto_master_proto_rawDesc = "" +
 	"\fis_compliant\x18\x03 \x01(\bR\visCompliant\x12\x1c\n" +
 	"\ttimestamp\x18\x04 \x01(\x03R\ttimestamp\"9\n" +
 	"\x13ReportStateResponse\x12\"\n" +
-	"\facknowledged\x18\x01 \x01(\bR\facknowledged2\xa6\x01\n" +
+	"\facknowledged\x18\x01 \x01(\bR\facknowledged\"k\n" +
+	"\x0eSignCSRRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12'\n" +
+	"\x0fbootstrap_token\x18\x02 \x01(\tR\x0ebootstrapToken\x12\x17\n" +
+	"\acsr_pem\x18\x03 \x01(\tR\x06csrPem\":\n" +
+	"\x0fSignCSRResponse\x12'\n" +
+	"\x0fcertificate_pem\x18\x01 \x01(\tR\x0ecertificatePem2\xa6\x01\n" +
 	"\x13ConfigurationMaster\x12E\n" +
 	"\n" +
 	"GetCatalog\x12\x19.master.GetCatalogRequest\x1a\x1a.master.GetCatalogResponse\"\x00\x12H\n" +
-	"\vReportState\x12\x1a.master.ReportStateRequest\x1a\x1b.master.ReportStateResponse\"\x00B7Z5github.com/guilledipa/praetor/proto/gen/master;masterb\x06proto3"
+	"\vReportState\x12\x1a.master.ReportStateRequest\x1a\x1b.master.ReportStateResponse\"\x002T\n" +
+	"\x14CertificateAuthority\x12<\n" +
+	"\aSignCSR\x12\x16.master.SignCSRRequest\x1a\x17.master.SignCSRResponse\"\x00B7Z5github.com/guilledipa/praetor/proto/gen/master;masterb\x06proto3"
 
 var (
 	file_proto_master_proto_rawDescOnce sync.Once
@@ -425,7 +540,7 @@ func file_proto_master_proto_rawDescGZIP() []byte {
 	return file_proto_master_proto_rawDescData
 }
 
-var file_proto_master_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_proto_master_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_proto_master_proto_goTypes = []any{
 	(*GetCatalogRequest)(nil),   // 0: master.GetCatalogRequest
 	(*Catalog)(nil),             // 1: master.Catalog
@@ -433,18 +548,22 @@ var file_proto_master_proto_goTypes = []any{
 	(*ResourceReport)(nil),      // 3: master.ResourceReport
 	(*ReportStateRequest)(nil),  // 4: master.ReportStateRequest
 	(*ReportStateResponse)(nil), // 5: master.ReportStateResponse
-	nil,                         // 6: master.GetCatalogRequest.FactsEntry
+	(*SignCSRRequest)(nil),      // 6: master.SignCSRRequest
+	(*SignCSRResponse)(nil),     // 7: master.SignCSRResponse
+	nil,                         // 8: master.GetCatalogRequest.FactsEntry
 }
 var file_proto_master_proto_depIdxs = []int32{
-	6, // 0: master.GetCatalogRequest.facts:type_name -> master.GetCatalogRequest.FactsEntry
+	8, // 0: master.GetCatalogRequest.facts:type_name -> master.GetCatalogRequest.FactsEntry
 	1, // 1: master.GetCatalogResponse.catalog:type_name -> master.Catalog
 	3, // 2: master.ReportStateRequest.resources:type_name -> master.ResourceReport
 	0, // 3: master.ConfigurationMaster.GetCatalog:input_type -> master.GetCatalogRequest
 	4, // 4: master.ConfigurationMaster.ReportState:input_type -> master.ReportStateRequest
-	2, // 5: master.ConfigurationMaster.GetCatalog:output_type -> master.GetCatalogResponse
-	5, // 6: master.ConfigurationMaster.ReportState:output_type -> master.ReportStateResponse
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
+	6, // 5: master.CertificateAuthority.SignCSR:input_type -> master.SignCSRRequest
+	2, // 6: master.ConfigurationMaster.GetCatalog:output_type -> master.GetCatalogResponse
+	5, // 7: master.ConfigurationMaster.ReportState:output_type -> master.ReportStateResponse
+	7, // 8: master.CertificateAuthority.SignCSR:output_type -> master.SignCSRResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
 	3, // [3:3] is the sub-list for extension extendee
 	0, // [0:3] is the sub-list for field type_name
@@ -461,9 +580,9 @@ func file_proto_master_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_master_proto_rawDesc), len(file_proto_master_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_proto_master_proto_goTypes,
 		DependencyIndexes: file_proto_master_proto_depIdxs,

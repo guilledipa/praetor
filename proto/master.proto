@@ -57,3 +57,21 @@ message ReportStateResponse {
   // Master acknowledges receipt
   bool acknowledged = 1;
 }
+
+service CertificateAuthority {
+  // Requests a signed certificate using a CSR and Bootstrap Token
+  rpc SignCSR(SignCSRRequest) returns (SignCSRResponse) {}
+}
+
+message SignCSRRequest {
+  string node_id = 1;
+  // A shared secret to authenticate the unprovisioned node
+  string bootstrap_token = 2;
+  // PEM encoded Certificate Signing Request
+  string csr_pem = 3;
+}
+
+message SignCSRResponse {
+  // PEM encoded signed certificate
+  string certificate_pem = 1;
+}

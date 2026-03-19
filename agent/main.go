@@ -3,11 +3,22 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/guilledipa/praetor/agent/facts"
 	"github.com/guilledipa/praetor/agent/resources"
 	masterpb "github.com/guilledipa/praetor/proto/gen/master"
@@ -15,12 +26,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"io/ioutil"
-	"log"
-	"log/slog"
-	"os"
-	"strings"
-	"time"
 
 	_ "github.com/guilledipa/praetor/agent/facts/core"     // Register core facts
 	_ "github.com/guilledipa/praetor/agent/resources/exec" // Register exec resource
@@ -33,16 +38,17 @@ var logger *slog.Logger
 
 // Config represents the agent configuration.
 type Config struct {
-	NatsURL           string `envconfig:"NATS_URL" default:"nats://localhost:4222"`
-	NatsClientCert    string `envconfig:"NATS_CLIENT_CERT" default:"../nats/certs/client.crt"`
-	NatsClientKey     string `envconfig:"NATS_CLIENT_KEY" default:"../nats/certs/client.key"`
-	NatsRootCA        string `envconfig:"NATS_ROOT_CA" default:"../nats/certs/ca.crt"`
-	MasterGRPCAddress string `envconfig:"MASTER_GRPC_ADDRESS" default:"localhost:50051"`
-	MasterClientCert  string `envconfig:"MASTER_CLIENT_CERT" default:"certs/client.crt"`
-	MasterClientKey   string `envconfig:"MASTER_CLIENT_KEY" default:"certs/client.key"`
-	MasterRootCA      string `envconfig:"MASTER_ROOT_CA" default:"certs/master-ca.crt"`
-	NodeID            string `envconfig:"NODE_ID" default:"agent1"`
-	LogLevel          string `envconfig:"LOG_LEVEL" default:"info"`
+	NatsURL             string `envconfig:"NATS_URL" default:"nats://localhost:4222"`
+	NatsClientCert      string `envconfig:"NATS_CLIENT_CERT" default:"certs/client.crt"`
+	NatsClientKey       string `envconfig:"NATS_CLIENT_KEY" default:"certs/client.key"`
+	NatsRootCA          string `envconfig:"NATS_ROOT_CA" default:"certs/master-ca.crt"`
+	MasterGRPCAddress   string `envconfig:"MASTER_GRPC_ADDRESS" default:"localhost:50051"`
+	MasterClientCert    string `envconfig:"MASTER_CLIENT_CERT" default:"certs/client.crt"`
+	MasterClientKey     string `envconfig:"MASTER_CLIENT_KEY" default:"certs/client.key"`
+	MasterRootCA        string `envconfig:"MASTER_ROOT_CA" default:"certs/master-ca.crt"`
+	NodeID              string `envconfig:"NODE_ID" default:"agent1"`
+	LogLevel            string `envconfig:"LOG_LEVEL" default:"info"`
+	AgentBootstrapToken string `envconfig:"AGENT_BOOTSTRAP_TOKEN" default:"praetor-secret-token"`
 }
 
 func main() {
@@ -69,6 +75,12 @@ func main() {
 	slog.SetDefault(logger)
 
 	logger.Info("Agent starting...")
+
+	// Auto-enrollment logic
+	if err := runBootstrapWorkflow(cfg, logger); err != nil {
+		logger.Error("Bootstrap enrollment failed", "error", err)
+		os.Exit(1)
+	}
 
 	// Load TLS configurations
 	natsTLSConfig, err := setupTLS(cfg.NatsClientCert, cfg.NatsClientKey, cfg.NatsRootCA)
@@ -420,4 +432,86 @@ type Catalog struct {
 type CatalogResource struct {
 	Type string          `json:"type"`
 	Spec json.RawMessage `json:"spec"`
+}
+
+func runBootstrapWorkflow(cfg Config, logger *slog.Logger) error {
+	clientCertPath := cfg.NatsClientCert
+	clientKeyPath := cfg.NatsClientKey
+
+	if _, err := os.Stat(clientCertPath); err == nil {
+		logger.Debug("Client certificate exists, skipping bootstrap")
+		return nil
+	}
+	logger.Info("Client certificate missing. Enrolling with Master...")
+
+	// 1. Trust Master CA
+	caCert, err := os.ReadFile(cfg.MasterRootCA)
+	if err != nil {
+		return fmt.Errorf("failed to read master root CA: %w", err)
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{RootCAs: caCertPool}
+	creds := credentials.NewTLS(tlsConfig)
+
+	bootstrapAddr := strings.Split(cfg.MasterGRPCAddress, ":")[0] + ":50052"
+	conn, err := grpc.Dial(bootstrapAddr, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return fmt.Errorf("failed to dial bootstrap server: %w", err)
+	}
+	defer conn.Close()
+
+	client := masterpb.NewCertificateAuthorityClient(conn)
+
+	// 2. Generate Key Pair
+	priv, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return err
+	}
+
+	subj := pkix.Name{CommonName: cfg.NodeID}
+	template := x509.CertificateRequest{
+		Subject:            subj,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+	}
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &template, priv)
+	if err != nil {
+		return err
+	}
+
+	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrBytes})
+
+	// 3. Send CSR
+	req := &masterpb.SignCSRRequest{
+		NodeId:         cfg.NodeID,
+		BootstrapToken: cfg.AgentBootstrapToken,
+		CsrPem:         string(csrPEM),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := client.SignCSR(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to sign CSR via gRPC: %w", err)
+	}
+
+	// 4. Write back cert & key
+	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return err
+	}
+	privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privBytes})
+
+	os.MkdirAll(filepath.Dir(clientKeyPath), 0755)
+
+	if err := os.WriteFile(clientKeyPath, privPEM, 0600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(clientCertPath, []byte(resp.GetCertificatePem()), 0644); err != nil {
+		return err
+	}
+
+	logger.Info("Enrollment successful! Certificate provisioned locally.")
+	return nil
 }

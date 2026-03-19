@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -10,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log/slog"
+	"math/big"
 	"net"
 	"os"
 	"sync"
@@ -36,9 +39,10 @@ type MasterConfig struct {
 	NatsURL        string        `envconfig:"NATS_URL" default:"nats://localhost:4222"`
 	NatsClientCert string        `envconfig:"NATS_CLIENT_CERT" default:"../nats/certs/client.crt"`
 	NatsClientKey  string        `envconfig:"NATS_CLIENT_KEY" default:"../nats/certs/client.key"`
-	NatsRootCA     string        `envconfig:"NATS_ROOT_CA" default:"../nats/certs/ca.crt"`
+	NatsRootCA      string        `envconfig:"NATS_ROOT_CA" default:"../nats/certs/ca.crt"`
 	TriggerInterval time.Duration `envconfig:"TRIGGER_INTERVAL" default:"15s"`
-	TargetNodeID   string        `envconfig:"TARGET_NODE_ID" default:"agent1"`
+	TargetNodeID    string        `envconfig:"TARGET_NODE_ID" default:"agent1"`
+	BootstrapToken  string        `envconfig:"BOOTSTRAP_TOKEN" default:"praetor-secret-token"`
 }
 
 // server is used to implement master.ConfigurationMasterServer.
@@ -162,6 +166,65 @@ func (s *server) ReportState(ctx context.Context, in *pb.ReportStateRequest) (*p
 	return &pb.ReportStateResponse{Acknowledged: true}, nil
 }
 
+type caServer struct {
+	pb.UnimplementedCertificateAuthorityServer
+	caCert         *x509.Certificate
+	caPrivKey      interface{}
+	bootstrapToken string
+}
+
+func (s *caServer) SignCSR(ctx context.Context, in *pb.SignCSRRequest) (*pb.SignCSRResponse, error) {
+	if s.bootstrapToken != "" && in.GetBootstrapToken() != s.bootstrapToken {
+		return nil, fmt.Errorf("invalid bootstrap token")
+	}
+
+	logger.Info("Received CSR signing request", "node_id", in.GetNodeId())
+
+	// Parse CSR
+	block, _ := pem.Decode([]byte(in.GetCsrPem()))
+	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+		return nil, fmt.Errorf("failed to decode PEM block containing CSR")
+	}
+
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSR: %w", err)
+	}
+	if err := csr.CheckSignature(); err != nil {
+		return nil, fmt.Errorf("invalid CSR signature: %w", err)
+	}
+
+	// Create Certificate
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber:          serialNumber,
+		Subject:               csr.Subject,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour), // 1 year
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+	}
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, &template, s.caCert, csr.PublicKey, s.caPrivKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	
+	logger.Info("Successfully signed CSR", "node_id", in.GetNodeId(), "serial", serialNumber.String())
+
+	return &pb.SignCSRResponse{
+		CertificatePem: string(certPEM),
+	}, nil
+}
+
 var activeAgents sync.Map
 
 func handleAgentRegistration(msg broker.Message) {
@@ -277,7 +340,39 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Load CA certificate for gRPC
+	caTLSCert, err := tls.LoadX509KeyPair("certs/ca.crt", "certs/ca.key")
+	if err != nil {
+		logger.Error("failed to load CA definition for signing", "error", err)
+		os.Exit(1)
+	}
+	caX509Cert, err := x509.ParseCertificate(caTLSCert.Certificate[0])
+	if err != nil {
+		logger.Error("failed to parse CA x509 cert")
+		os.Exit(1)
+	}
+
+	// Bootstrap server setup
+	bootCreds := credentials.NewServerTLSFromCert(&serverCert)
+	bootServer := grpc.NewServer(grpc.Creds(bootCreds))
+	pb.RegisterCertificateAuthorityServer(bootServer, &caServer{
+		caCert:         caX509Cert,
+		caPrivKey:      caTLSCert.PrivateKey,
+		bootstrapToken: masterCfg.BootstrapToken,
+	})
+	
+	bootLis, err := net.Listen("tcp", ":50052")
+	if err != nil {
+		logger.Error("failed to listen bootstrap", "error", err)
+		os.Exit(1)
+	}
+	go func() {
+		logger.Info("Bootstrap server listening on gRPC", "port", ":50052")
+		if err := bootServer.Serve(bootLis); err != nil {
+			logger.Error("failed to serve bootstrap gRPC", "error", err)
+		}
+	}()
+
+	// Load CA certificate for gRPC mTLS
 	caCert, err := os.ReadFile("certs/ca.crt")
 	if err != nil {
 		logger.Error("failed to read CA certificate", "error", err)
