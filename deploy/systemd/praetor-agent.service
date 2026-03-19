@@ -1,0 +1,27 @@
+[Unit]
+Description=Praetor Configuration Enforcement Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# The praetor-agent manages plugins running out of /opt/praetor/plugins
+WorkingDirectory=/var/lib/praetor
+
+# Source dynamic settings like connection URLs and Client PKI variables
+EnvironmentFile=-/etc/praetor/agent.env
+
+# Native monolithic agent entrypoint
+ExecStart=/usr/local/bin/praetor-agent
+
+# Ensure we recover quickly if panicked
+Restart=always
+RestartSec=5s
+
+# File descriptor limits suitable for robust system operations
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

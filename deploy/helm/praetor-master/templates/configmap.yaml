@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-catalog
+  labels:
+    app: {{ .Release.Name }}-master
+data:
+  catalog.yaml: |
+    apiVersion: praetor.io/v1alpha1
+    kind: Catalog
+    metadata:
+      name: k8s-deployed-catalog
+    spec:
+      resources:
+        - apiVersion: praetor.io/v1alpha1
+          kind: File
+          metadata:
+            name: welcome-message
+          spec:
+            path: /tmp/praetor-greeting.txt
+            content: 'Welcome to Praetor Cloud! Managed by {{ "{{" }} .facts.hostname {{ "}}" }}'
+            ensure: present
+            mode: "0644"

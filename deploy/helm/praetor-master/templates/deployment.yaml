@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-master
+  labels:
+    app: {{ .Release.Name }}-master
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-master
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-master
+    spec:
+      containers:
+        - name: praetor-master
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.grpc }}
+              protocol: TCP
+          env:
+            - name: NATS_URL
+              {{- if .Values.nats.enabled }}
+              value: "nats://{{ .Release.Name }}-nats:4222"
+              {{- else }}
+              value: "nats://localhost:4222"
+              {{- end }}
+            - name: NATS_CLIENT_CERT
+              value: "/app/nats/certs/client.crt"
+            - name: NATS_CLIENT_KEY
+              value: "/app/nats/certs/client.key"
+            - name: NATS_ROOT_CA
+              value: "/app/nats/certs/ca.crt"
+            - name: PRAETOR_CERT
+              value: "/app/master/certs/server.crt"
+            - name: PRAETOR_KEY
+              value: "/app/master/certs/server.key"
+            - name: PRAETOR_CA
+              value: "/app/master/certs/ca.crt"
+            - name: TRIGGER_INTERVAL
+              value: "{{ .Values.triggerInterval }}"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: nats-certs
+              mountPath: "/app/nats/certs"
+              readOnly: true
+            - name: master-certs
+              mountPath: "/app/master/certs"
+              readOnly: true
+            # Mount the catalog.yaml exactly where Master expects
+            - name: catalog-volume
+              mountPath: "/app/master/catalog.yaml"
+              subPath: "catalog.yaml"
+              readOnly: true
+      volumes:
+        - name: nats-certs
+          secret:
+            secretName: {{ .Release.Name }}-nats-client-certs
+        - name: master-certs
+          secret:
+            secretName: {{ .Release.Name }}-master-certs
+        - name: catalog-volume
+          configMap:
+            name: {{ .Release.Name }}-catalog

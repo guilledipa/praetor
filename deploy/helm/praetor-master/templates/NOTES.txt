@@ -1,0 +1,20 @@
+========================================================================
+Praetor Master Node Orchestrator has been successfully deployed!
+
+1. Creating Cryptographic Secrets (mTLS):
+Since you opted for manual cert definitions, please create the Kubernetes Secrets:
+  kubectl create secret generic {{ .Release.Name }}-master-certs \
+    --from-file=server.crt=./master/certs/server.crt \
+    --from-file=server.key=./master/certs/server.key \
+    --from-file=ca.crt=./master/certs/ca.crt
+
+  kubectl create secret generic {{ .Release.Name }}-nats-client-certs \
+    --from-file=client.crt=./nats/certs/client.crt \
+    --from-file=client.key=./nats/certs/client.key \
+    --from-file=ca.crt=./nats/certs/ca.crt
+
+2. Exposing the Master (Locally):
+  kubectl port-forward svc/{{ .Release.Name }}-master 50051:50051
+
+3. You can now bootstrap Bare-Metal Agents targeting this Master!
+========================================================================

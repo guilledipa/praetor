@@ -6,6 +6,9 @@ certs/
 *.pem
 # Go / Binary outputs
 bin/
+build/
+*.deb
+*.rpm
 *.exe
 agent/agent
 master/master

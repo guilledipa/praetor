@@ -1,0 +1,55 @@
+name: Build Praetor Packages
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build Debian Packages
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install Protobuf Compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install gRPC plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Compile Protobufs & Run Tests
+        run: make all
+
+      - name: Build Debian Packages
+        run: make deb
+
+      - name: Upload Artifacts (praetor-agent)
+        uses: actions/upload-artifact@v4
+        with:
+          name: praetor-agent-deb
+          path: build/praetor-agent_*.deb
+          retention-days: 7
+
+      - name: Upload Artifacts (praetor-plugin-linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: praetor-plugin-linux-deb
+          path: build/praetor-plugin-linux_*.deb
+          retention-days: 7

@@ -42,6 +42,18 @@ build:
 	@cd cli && go build -o ../bin/praetorctl ./cmd/praetorctl
 	@echo "Build successful! Binaries are in ./bin/"
 
+deb: build
+	@echo "Packaging praetor-agent..."
+	@mkdir -p build/
+	@cp bin/praetor-agent build/deb/praetor-agent/usr/local/bin/
+	@cp deploy/systemd/praetor-agent.service build/deb/praetor-agent/etc/systemd/system/
+	@chmod 755 build/deb/praetor-agent/DEBIAN/postinst build/deb/praetor-agent/DEBIAN/prerm
+	@dpkg-deb --build build/deb/praetor-agent build/
+	@echo "Packaging praetor-plugin-linux..."
+	@cp bin/praetor-plugin-linux build/deb/praetor-plugin-linux/opt/praetor/plugins/
+	@dpkg-deb --build build/deb/praetor-plugin-linux build/
+	@echo "Debian packages successfully built in build/"
+
 clean:
 	@echo "Cleaning binaries..."
 	@rm -rf bin/
