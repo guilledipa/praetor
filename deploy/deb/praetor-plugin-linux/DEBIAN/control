@@ -1,0 +1,7 @@
+Package: praetor-plugin-linux
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Praetor Configuration Engine <support@praetor.io>
+Description: Praetor Core Linux RPC Plugin
+ Enforces physical state modifications for Users, Groups, Crons, Packages, and Execute statements.
+Depends: praetor-agent (>= 1.0)

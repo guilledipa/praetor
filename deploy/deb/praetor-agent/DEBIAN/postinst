@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -e
+
+echo "⚜️ Enabling praetor-agent on system..."
+systemctl daemon-reload
+systemctl enable praetor-agent.service
+
+echo ""
+echo "✅ Praetor Agent installed! Update /etc/praetor/agent.env and run:"
+echo "systemctl start praetor-agent"

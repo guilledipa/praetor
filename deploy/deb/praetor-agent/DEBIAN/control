@@ -1,0 +1,7 @@
+Package: praetor-agent
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Praetor Configuration Engine <support@praetor.io>
+Description: Praetor Agent Daemon
+ This is the core Praetor Agent enforcing declarative catalog state on remote linux servers.
+Depends: systemd

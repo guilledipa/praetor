@@ -44,12 +44,17 @@ build:
 
 deb: build
 	@echo "Packaging praetor-agent..."
-	@mkdir -p build/
+	@rm -rf build/deb/ && mkdir -p build/deb/
+	@cp -r deploy/deb/praetor-agent build/deb/
+	@mkdir -p build/deb/praetor-agent/usr/local/bin
+	@mkdir -p build/deb/praetor-agent/etc/systemd/system
 	@cp bin/praetor-agent build/deb/praetor-agent/usr/local/bin/
 	@cp deploy/systemd/praetor-agent.service build/deb/praetor-agent/etc/systemd/system/
-	@chmod 755 build/deb/praetor-agent/DEBIAN/postinst build/deb/praetor-agent/DEBIAN/prerm
+	@chmod 755 build/deb/praetor-agent/DEBIAN/postinst build/deb/praetor-agent/DEBIAN/prerm || true
 	@dpkg-deb --build build/deb/praetor-agent build/
 	@echo "Packaging praetor-plugin-linux..."
+	@cp -r deploy/deb/praetor-plugin-linux build/deb/
+	@mkdir -p build/deb/praetor-plugin-linux/opt/praetor/plugins
 	@cp bin/praetor-plugin-linux build/deb/praetor-plugin-linux/opt/praetor/plugins/
 	@dpkg-deb --build build/deb/praetor-plugin-linux build/
 	@echo "Debian packages successfully built in build/"

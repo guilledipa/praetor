@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+
+if [ "$1" = "remove" ]; then
+    echo "Stopping praetor-agent..."
+    systemctl stop praetor-agent.service || true
+    systemctl disable praetor-agent.service || true
+fi
