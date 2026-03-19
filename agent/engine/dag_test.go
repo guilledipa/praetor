@@ -4,15 +4,14 @@ import (
 	"reflect"
 	"testing"
 	"github.com/guilledipa/praetor/agent/resources"
-	"github.com/guilledipa/praetor/schema"
 )
 
 // mockResource implements the resources.Resource interface for unit testing.
 type mockResource struct {
 	id       string
 	kind     string
-	requires []schema.Dependency
-	before   []schema.Dependency
+	requires []resources.Dependency
+	before   []resources.Dependency
 }
 
 func (m mockResource) Get() (resources.State, error) { return nil, nil }
@@ -20,8 +19,8 @@ func (m mockResource) Test(currentState resources.State) (bool, error) { return 
 func (m mockResource) Set() error { return nil }
 func (m mockResource) Type() string { return m.kind }
 func (m mockResource) ID() string { return m.id }
-func (m mockResource) Requires() []schema.Dependency { return m.requires }
-func (m mockResource) Before() []schema.Dependency { return m.before }
+func (m mockResource) Requires() []resources.Dependency { return m.requires }
+func (m mockResource) Before() []resources.Dependency { return m.before }
 
 func TestBuildDAG(t *testing.T) {
 	tests := []struct {
@@ -34,8 +33,8 @@ func TestBuildDAG(t *testing.T) {
 		{
 			name: "Linear Chain (A requires B, B requires C)",
 			input: []resources.Resource{
-				mockResource{id: "A", kind: "Pkg", requires: []schema.Dependency{{Kind: "Pkg", Name: "B"}}},
-				mockResource{id: "B", kind: "Pkg", requires: []schema.Dependency{{Kind: "Pkg", Name: "C"}}},
+				mockResource{id: "A", kind: "Pkg", requires: []resources.Dependency{{Kind: "Pkg", Name: "B"}}},
+				mockResource{id: "B", kind: "Pkg", requires: []resources.Dependency{{Kind: "Pkg", Name: "C"}}},
 				mockResource{id: "C", kind: "Pkg"},
 			},
 			expectError:    false,
@@ -52,15 +51,15 @@ func TestBuildDAG(t *testing.T) {
 		{
 			name: "Cyclic Dependency (A req B, B req A)",
 			input: []resources.Resource{
-				mockResource{id: "A", kind: "File", requires: []schema.Dependency{{Kind: "File", Name: "B"}}},
-				mockResource{id: "B", kind: "File", requires: []schema.Dependency{{Kind: "File", Name: "A"}}},
+				mockResource{id: "A", kind: "File", requires: []resources.Dependency{{Kind: "File", Name: "B"}}},
+				mockResource{id: "B", kind: "File", requires: []resources.Dependency{{Kind: "File", Name: "A"}}},
 			},
 			expectError: true,
 		},
 		{
 			name: "Missing Dependency",
 			input: []resources.Resource{
-				mockResource{id: "A", kind: "Exec", requires: []schema.Dependency{{Kind: "File", Name: "NonExistent"}}},
+				mockResource{id: "A", kind: "Exec", requires: []resources.Dependency{{Kind: "File", Name: "NonExistent"}}},
 			},
 			expectError: true,
 		},
