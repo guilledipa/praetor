@@ -3,6 +3,7 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/guilledipa/praetor/schema"
 	"log"
 )
 
@@ -16,8 +17,12 @@ type Resource interface {
 	Set() error
 	// Type returns the resource type name.
 	Type() string
-	// ID returns a unique identifier for this resource instance (e.g., file path, package name).
+	// ID returns a unique identifier for this resource instance.
 	ID() string
+	// Requires returns dependency targets that must run before this resource.
+	Requires() []schema.Dependency
+	// Before returns dependency targets that must explicitly run after this resource.
+	Before() []schema.Dependency
 }
 
 // State represents the current state of a resource as a map.

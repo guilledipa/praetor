@@ -77,37 +77,74 @@ func (s *server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 	reqLogger := logger.With("node_id", nodeID)
 	reqLogger.Info("Received GetCatalog request", "facts", receivedFacts)
 
-	// Read catalog from YAML file
-	yamlFile, err := ioutil.ReadFile("catalog.yaml")
+	// 1. Evaluate Classifications
+	type NodeClass struct {
+		Name        string            `yaml:"name"`
+		MatchLabels map[string]string `yaml:"matchLabels"`
+		Roles       []string          `yaml:"roles"`
+	}
+	var cls struct {
+		Classes []NodeClass `yaml:"classes"`
+	}
+
+	clsFile, err := ioutil.ReadFile("classification.yaml")
 	if err != nil {
-		reqLogger.Error("Error reading catalog.yaml", "error", err)
-		return nil, fmt.Errorf("failed to read catalog: %w", err)
+		reqLogger.Error("Error reading classification.yaml", "error", err)
+		return nil, fmt.Errorf("failed to read classification.yaml: %w", err)
+	}
+	if err := yaml.Unmarshal(clsFile, &cls); err != nil {
+		return nil, fmt.Errorf("failed to parse classification.yaml: %w", err)
 	}
 
-	// Unmarshal YAML into a generic map
-	var catalogContainer map[string]any
-	err = yaml.Unmarshal(yamlFile, &catalogContainer)
-	if err != nil {
-		reqLogger.Error("Error unmarshalling catalog YAML", "error", err)
-		return nil, fmt.Errorf("failed to parse catalog YAML: %w", err)
-	}
-
-	spec, ok := catalogContainer["spec"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("catalog YAML missing spec or not a map")
-	}
-	resources, ok := spec["resources"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("catalog YAML missing spec.resources or not a list")
-	}
-
-	rawResources := make([]json.RawMessage, 0, len(resources))
-	for _, res := range resources {
-		raw, err := json.Marshal(res) // Re-marshal each resource to get json.RawMessage
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal resource to JSON: %w", err)
+	matchedRoles := make(map[string]bool)
+	for _, c := range cls.Classes {
+		match := true
+		for k, v := range c.MatchLabels {
+			if k == "node_id" {
+				if nodeID != v {
+					match = false
+					break
+				}
+			} else {
+				if receivedFacts[k] != v {
+					match = false
+					break
+				}
+			}
 		}
-		rawResources = append(rawResources, raw)
+		if match {
+			for _, r := range c.Roles {
+				matchedRoles[r] = true
+			}
+		}
+	}
+
+	reqLogger.Info("Node classified", "roles", matchedRoles)
+
+	var rawResources []json.RawMessage
+	for role := range matchedRoles {
+		roleFile, err := ioutil.ReadFile(fmt.Sprintf("roles/%s.yaml", role))
+		if err != nil {
+			reqLogger.Error("Error reading role file", "role", role, "error", err)
+			continue
+		}
+
+		var catalogContainer map[string]any
+		if err := yaml.Unmarshal(roleFile, &catalogContainer); err != nil {
+			reqLogger.Error("Error parsing role", "role", role, "error", err)
+			continue
+		}
+
+		spec, ok := catalogContainer["spec"].(map[string]any)
+		if !ok { continue }
+		resources, ok := spec["resources"].([]any)
+		if !ok { continue }
+
+		for _, res := range resources {
+			raw, err := json.Marshal(res)
+			if err != nil { continue }
+			rawResources = append(rawResources, raw)
+		}
 	}
 
 	// 3. Hydrate catalog with secrets and facts
@@ -121,14 +158,14 @@ func (s *server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 	finalCatalog := struct {
 		APIVersion string                 `json:"apiVersion"`
 		Kind       string                 `json:"kind"`
-		Metadata   map[string]any `json:"metadata"`
+		Metadata   map[string]any         `json:"metadata"`
 		Spec       struct {
 			Resources []any `json:"resources"`
 		} `json:"spec"`
 	}{
-		APIVersion: catalogContainer["apiVersion"].(string),
-		Kind:       catalogContainer["kind"].(string),
-		Metadata:   catalogContainer["metadata"].(map[string]any),
+		APIVersion: "praetor.io/v1alpha1",
+		Kind:       "Catalog",
+		Metadata:   map[string]any{"name": "compiled-catalog"},
 		Spec: struct {
 			Resources []any `json:"resources"`
 		}{Resources: hydratedResources},

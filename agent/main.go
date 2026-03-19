@@ -289,38 +289,51 @@ func fetchAndApplyCatalog(cfg Config, masterClient masterpb.ConfigurationMasterC
 		return
 	}
 		logger.Info("Successfully fetched and parsed catalog", "resource_count", len(catalog.Spec.Resources))
-	
-		allCompliant := true
-		var reports []*masterpb.ResourceReport
 
-		for _, resData := range catalog.Spec.Resources {
-			var typeMeta struct {
-				Kind string `json:"kind"`
-			}
-			if err := json.Unmarshal(resData, &typeMeta); err != nil {
-				logger.Error("Error unmarshalling resource kind", "error", err)
-				reports = append(reports, &masterpb.ResourceReport{
-					Type: "Unknown",
-					Compliant: false,
-					Message: fmt.Sprintf("Failed to unmarshal kind: %v", err),
-				})
-				allCompliant = false
-				continue
-			}
-	
-			logger.Debug("Processing resource", "kind", typeMeta.Kind, "spec", string(resData))
-	
-			res, err := resources.CreateResource(typeMeta.Kind, resData)
-			if err != nil {
-				logger.Error("Error creating resource instance", "kind", typeMeta.Kind, "error", err)
-				reports = append(reports, &masterpb.ResourceReport{
-					Type: typeMeta.Kind,
-					Compliant: false,
-					Message: fmt.Sprintf("Failed to create instance: %v", err),
-				})
-				allCompliant = false
-				continue
-			}
+	allCompliant := true
+	var reports []*masterpb.ResourceReport
+
+	// 1. Inflate all resources into memory first
+	var unsortedResources []resources.Resource
+	for _, resData := range catalog.Spec.Resources {
+		var typeMeta struct {
+			Kind string `json:"kind"`
+		}
+		if err := json.Unmarshal(resData, &typeMeta); err != nil {
+			logger.Error("Error unmarshalling resource kind", "error", err)
+			reports = append(reports, &masterpb.ResourceReport{
+				Type: "Unknown",
+				Compliant: false,
+				Message: fmt.Sprintf("Failed to unmarshal kind: %v", err),
+			})
+			allCompliant = false
+			continue
+		}
+
+		res, err := resources.CreateResource(typeMeta.Kind, resData)
+		if err != nil {
+			logger.Error("Error creating resource instance", "kind", typeMeta.Kind, "error", err)
+			reports = append(reports, &masterpb.ResourceReport{
+				Type: typeMeta.Kind,
+				Compliant: false,
+				Message: fmt.Sprintf("Failed to create instance: %v", err),
+			})
+			allCompliant = false
+			continue
+		}
+		unsortedResources = append(unsortedResources, res)
+	}
+
+	// 2. Compute Directed Acyclic Graph Topo Sort
+	sortedResources, err := buildDAG(unsortedResources)
+	if err != nil {
+		logger.Error("DAG Resolution Failed", "error", err)
+		return
+	}
+	logger.Info("DAG built successfully", "nodes", len(sortedResources))
+
+	// 3. Linearly Enforce the Sorted DAG
+	for _, res := range sortedResources {
 
 			report := &masterpb.ResourceReport{
 				Type: res.Type(),

@@ -34,9 +34,19 @@ func (f *File) Type() string {
 	return f.Kind
 }
 
-// ID returns the path of the file.
+// ID returns the unique identifier for this file.
 func (f *File) ID() string {
 	return f.Spec.Path
+}
+
+// Requires returns resources this file must run after.
+func (f *File) Requires() []schema.Dependency {
+	return f.Metadata.Requires
+}
+
+// Before returns resources this file must explicitly run before.
+func (f *File) Before() []schema.Dependency {
+	return f.Metadata.Before
 }
 
 // Get retrieves the current state of the file.

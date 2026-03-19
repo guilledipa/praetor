@@ -30,7 +30,21 @@ func init() {
 }
 
 func (s *Service) Type() string { return s.Kind }
-func (s *Service) ID() string   { return s.Spec.Name }
+
+// ID returns the unique identifier for this service resource.
+func (s *Service) ID() string {
+	return s.Spec.Name
+}
+
+// Requires returns resources this service must run after.
+func (s *Service) Requires() []schema.Dependency {
+	return s.Metadata.Requires
+}
+
+// Before returns resources this service must explicitly run before.
+func (s *Service) Before() []schema.Dependency {
+	return s.Metadata.Before
+}
 
 func (s *Service) Get() (resources.State, error) {
 	currentState := make(resources.State)

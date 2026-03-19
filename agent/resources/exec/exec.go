@@ -37,6 +37,16 @@ func (e *Exec) ID() string {
 	return name
 }
 
+// Requires returns resources this exec must run after.
+func (e *Exec) Requires() []schema.Dependency {
+	return e.Metadata.Requires
+}
+
+// Before returns resources this exec must explicitly run before.
+func (e *Exec) Before() []schema.Dependency {
+	return e.Metadata.Before
+}
+
 // Get retrieves the current state of the exec. Since execution is an action, its "state" is whether it needs to be run.
 func (e *Exec) Get() (resources.State, error) {
 	currentState := make(resources.State)

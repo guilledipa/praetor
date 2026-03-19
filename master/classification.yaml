@@ -1,0 +1,12 @@
+classes:
+  - name: "base-systems"
+    matchLabels:
+      os: "ubuntu"
+    roles:
+      - "base"
+
+  - name: "web-nodes"
+    matchLabels:
+      node_id: "agent1"
+    roles:
+      - "web"

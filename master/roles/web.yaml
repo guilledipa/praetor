@@ -1,0 +1,18 @@
+apiVersion: praetor.io/v1alpha1
+kind: Catalog
+metadata:
+  name: web-shard
+spec:
+  resources:
+    - apiVersion: praetor.io/v1alpha1
+      kind: File
+      metadata:
+        name: index-html
+        requires:
+          - kind: File
+            name: managed-by-master
+      spec:
+        path: /tmp/index.html
+        content: "<h1>Welcome to Praetor Web! Node: {{ .facts.hostname }}</h1>"
+        ensure: present
+        mode: "0644"

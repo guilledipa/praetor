@@ -121,9 +121,19 @@ func (p *Package) Type() string {
 	return p.Kind
 }
 
-// ID returns the name of the package.
+// ID returns the unique identifier for this package resource.
 func (p *Package) ID() string {
 	return p.Spec.Name
+}
+
+// Requires returns resources this package must run after.
+func (p *Package) Requires() []schema.Dependency {
+	return p.Metadata.Requires
+}
+
+// Before returns resources this package must explicitly run before.
+func (p *Package) Before() []schema.Dependency {
+	return p.Metadata.Before
 }
 
 // Get retrieves the current state of the package.
