@@ -124,23 +124,21 @@ digraph PraetorArchitecture {
     The configuration in `nats/conf/nats-server.conf` and `docker-compose.yml`
     enables JetStream with persistent storage.
 
-5.  **Start Master Server:**
+5.  **Start Master:**
 
     ```bash
     cd master
     # Optional: Configure NATS connection and trigger interval
     # export MASTER_NATS_URL=nats://custom:4222
     # export MASTER_TRIGGER_INTERVAL=30s
-    go mod tidy
-    go run main.go
+    go run cmd/master/main.go
     ```
 
 6.  **Start Agent:**
 
     ```bash
     cd agent
-    go mod tidy
-    go run main.go
+    go run cmd/agent/main.go
     ```
 
 ## Core Resources

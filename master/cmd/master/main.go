@@ -3,24 +3,19 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"log/slog"
-	"math/big"
 	"net"
 	"os"
-	"sync"
 	"time"
 
-	"github.com/guilledipa/praetor/master/catalog"
-	"github.com/guilledipa/praetor/pkg/broker"
-	"github.com/guilledipa/praetor/pkg/broker/nats"
-	"github.com/guilledipa/praetor/pkg/secrets"
+	"github.com/guilledipa/praetor/master/broker"
+	"github.com/guilledipa/praetor/master/classifier"
+	"github.com/guilledipa/praetor/master/server"
 	"github.com/guilledipa/praetor/pkg/secrets/local"
 	"github.com/guilledipa/praetor/pkg/storage"
 	"github.com/guilledipa/praetor/pkg/storage/natsjs"
@@ -30,31 +25,16 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
-	"gopkg.in/yaml.v3"
 )
-
-const (
-	port = ":50051"
-)
-
-var logger *slog.Logger
 
 type MasterConfig struct {
-	NatsURL        string        `envconfig:"NATS_URL" default:"nats://localhost:4222"`
-	NatsClientCert string        `envconfig:"NATS_CLIENT_CERT" default:"../nats/certs/client.crt"`
-	NatsClientKey  string        `envconfig:"NATS_CLIENT_KEY" default:"../nats/certs/client.key"`
+	NatsURL         string        `envconfig:"NATS_URL" default:"nats://localhost:4222"`
+	NatsClientCert  string        `envconfig:"NATS_CLIENT_CERT" default:"../nats/certs/client.crt"`
+	NatsClientKey   string        `envconfig:"NATS_CLIENT_KEY" default:"../nats/certs/client.key"`
 	NatsRootCA      string        `envconfig:"NATS_ROOT_CA" default:"../nats/certs/ca.crt"`
 	TriggerInterval time.Duration `envconfig:"TRIGGER_INTERVAL" default:"15s"`
 	TargetNodeID    string        `envconfig:"TARGET_NODE_ID" default:"agent1"`
 	BootstrapToken  string        `envconfig:"BOOTSTRAP_TOKEN" default:"praetor-secret-token"`
-}
-
-// server is used to implement master.ConfigurationMasterServer.
-type server struct {
-	pb.UnimplementedConfigurationMasterServer
-	signingKey ed25519.PrivateKey
-	secretProv secrets.Provider
-	store      storage.Provider
 }
 
 func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
@@ -71,254 +51,6 @@ func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
 		return nil, err
 	}
 	return priv.(ed25519.PrivateKey), nil
-}
-
-// GetCatalog implements master.ConfigurationMasterServer
-func (s *server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.GetCatalogResponse, error) {
-	nodeID := in.GetNodeId()
-	receivedFacts := in.GetFacts()
-	reqLogger := logger.With("node_id", nodeID)
-	reqLogger.Info("Received GetCatalog request", "facts", receivedFacts)
-
-	// 1. Evaluate Classifications
-	type NodeClass struct {
-		Name        string            `yaml:"name"`
-		MatchLabels map[string]string `yaml:"matchLabels"`
-		Roles       []string          `yaml:"roles"`
-	}
-	var cls struct {
-		Classes []NodeClass `yaml:"classes"`
-	}
-
-	clsFile, err := ioutil.ReadFile("classification.yaml")
-	if err != nil {
-		reqLogger.Error("Error reading classification.yaml", "error", err)
-		return nil, fmt.Errorf("failed to read classification.yaml: %w", err)
-	}
-	if err := yaml.Unmarshal(clsFile, &cls); err != nil {
-		return nil, fmt.Errorf("failed to parse classification.yaml: %w", err)
-	}
-
-	matchedRoles := make(map[string]bool)
-	for _, c := range cls.Classes {
-		match := true
-		for k, v := range c.MatchLabels {
-			if k == "node_id" {
-				if nodeID != v {
-					match = false
-					break
-				}
-			} else {
-				if receivedFacts[k] != v {
-					match = false
-					break
-				}
-			}
-		}
-		if match {
-			for _, r := range c.Roles {
-				matchedRoles[r] = true
-			}
-		}
-	}
-
-	reqLogger.Info("Node classified", "roles", matchedRoles)
-
-	var rawResources []json.RawMessage
-	for role := range matchedRoles {
-		roleFile, err := ioutil.ReadFile(fmt.Sprintf("roles/%s.yaml", role))
-		if err != nil {
-			reqLogger.Error("Error reading role file", "role", role, "error", err)
-			continue
-		}
-
-		var catalogContainer map[string]any
-		if err := yaml.Unmarshal(roleFile, &catalogContainer); err != nil {
-			reqLogger.Error("Error parsing role", "role", role, "error", err)
-			continue
-		}
-
-		spec, ok := catalogContainer["spec"].(map[string]any)
-		if !ok { continue }
-		resources, ok := spec["resources"].([]any)
-		if !ok { continue }
-
-		for _, res := range resources {
-			raw, err := json.Marshal(res)
-			if err != nil { continue }
-			rawResources = append(rawResources, raw)
-		}
-	}
-
-	// 3. Hydrate catalog with secrets and facts
-	hydratedResources, err := catalog.HydrateCatalog(rawResources, receivedFacts, s.secretProv)
-	if err != nil {
-		logger.Error("Failed to hydrate catalog", "error", err)
-		return nil, fmt.Errorf("failed to hydrate catalog: %w", err)
-	}
-
-	// Create the final catalog structure with hydrated resources
-	finalCatalog := struct {
-		APIVersion string                 `json:"apiVersion"`
-		Kind       string                 `json:"kind"`
-		Metadata   map[string]any         `json:"metadata"`
-		Spec       struct {
-			Resources []any `json:"resources"`
-		} `json:"spec"`
-	}{
-		APIVersion: "praetor.io/v1alpha1",
-		Kind:       "Catalog",
-		Metadata:   map[string]any{"name": "compiled-catalog"},
-		Spec: struct {
-			Resources []any `json:"resources"`
-		}{Resources: hydratedResources},
-	}
-
-	// Convert Go struct to JSON
-	jsonBytes, err := json.Marshal(finalCatalog)
-	if err != nil {
-		reqLogger.Error("Error marshalling to JSON", "error", err)
-		return nil, fmt.Errorf("failed to marshal catalog to JSON: %w", err)
-	}
-	catalogContent := string(jsonBytes)
-
-	// Sign the JSON content
-	signature := ed25519.Sign(s.signingKey, []byte(catalogContent))
-	reqLogger.Info("Catalog signed", "algorithm", "ed25519")
-
-	return &pb.GetCatalogResponse{
-		Catalog: &pb.Catalog{
-			Content: catalogContent,
-			Format:  "json",
-		},
-		Signature:          signature,
-		SignatureAlgorithm: "ed25519",
-	}, nil
-}
-
-// ReportState implements master.ConfigurationMasterServer
-func (s *server) ReportState(ctx context.Context, req *pb.ReportStateRequest) (*pb.ReportStateResponse, error) {
-	logger.Info("Received state report from agent", "node_id", req.NodeId, "resource_count", len(req.Resources))
-	
-	for _, rep := range req.Resources {
-		err := s.store.StoreReport(ctx, req.NodeId, rep)
-		if err != nil {
-			logger.Error("Failed to persist report state into JetStream", "node_id", req.NodeId, "resource_id", rep.GetId(), "error", err)
-		} else {
-			logger.Debug("Resource run persisted", "node_id", req.NodeId, "type", rep.GetType(), "id", rep.GetId(), "compliant", rep.GetCompliant())
-		}
-	}
-	
-	return &pb.ReportStateResponse{Acknowledged: true}, nil
-}
-
-type caServer struct {
-	pb.UnimplementedCertificateAuthorityServer
-	caCert         *x509.Certificate
-	caPrivKey      interface{}
-	bootstrapToken string
-}
-
-func (s *caServer) SignCSR(ctx context.Context, in *pb.SignCSRRequest) (*pb.SignCSRResponse, error) {
-	if s.bootstrapToken != "" && in.GetBootstrapToken() != s.bootstrapToken {
-		return nil, fmt.Errorf("invalid bootstrap token")
-	}
-
-	logger.Info("Received CSR signing request", "node_id", in.GetNodeId())
-
-	// Parse CSR
-	block, _ := pem.Decode([]byte(in.GetCsrPem()))
-	if block == nil || block.Type != "CERTIFICATE REQUEST" {
-		return nil, fmt.Errorf("failed to decode PEM block containing CSR")
-	}
-
-	csr, err := x509.ParseCertificateRequest(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse CSR: %w", err)
-	}
-	if err := csr.CheckSignature(); err != nil {
-		return nil, fmt.Errorf("invalid CSR signature: %w", err)
-	}
-
-	// Create Certificate
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate serial number: %w", err)
-	}
-
-	template := x509.Certificate{
-		SerialNumber:          serialNumber,
-		Subject:               csr.Subject,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour), // 1 year
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		BasicConstraintsValid: true,
-	}
-
-	certBytes, err := x509.CreateCertificate(rand.Reader, &template, s.caCert, csr.PublicKey, s.caPrivKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create certificate: %w", err)
-	}
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-	
-	logger.Info("Successfully signed CSR", "node_id", in.GetNodeId(), "serial", serialNumber.String())
-
-	return &pb.SignCSRResponse{
-		CertificatePem: string(certPEM),
-	}, nil
-}
-
-var activeAgents sync.Map
-
-func handleAgentRegistration(msg broker.Message) {
-	agentID := string(msg.Data())
-	if agentID != "" {
-		activeAgents.Store(agentID, time.Now())
-		logger.Info("Agent registered dynamically", "node_id", agentID)
-	}
-}
-
-func setupBroker(cfg MasterConfig) (broker.Broker, error) {
-	cert, err := tls.LoadX509KeyPair(cfg.NatsClientCert, cfg.NatsClientKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load client key pair: %w", err)
-	}
-
-	caCert, err := os.ReadFile(cfg.NatsRootCA)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read root CA file: %w", err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caCertPool,
-		MinVersion:   tls.VersionTLS12,
-	}
-
-	b := nats.NewBroker()
-	err = b.Connect("Praetor Master", cfg.NatsURL, tlsConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	// Subscribe to agent registrations
-	err = b.Subscribe("agent.register", handleAgentRegistration)
-	if err != nil {
-		logger.Error("Failed to subscribe to agent.register", "error", err)
-	}
-
-	// Ensure the AGENT_TRIGGERS stream exists
-	err = b.EnsureStream("AGENT_TRIGGERS", []string{"agent.trigger.>"})
-	if err != nil {
-		b.Close()
-		return nil, fmt.Errorf("failed to add AGENT_TRIGGERS stream: %w", err)
-	}
-	return b, nil
 }
 
 func setupStorage(cfg MasterConfig) (storage.Provider, error) {
@@ -340,7 +72,6 @@ func setupStorage(cfg MasterConfig) (storage.Provider, error) {
 		MinVersion:   tls.VersionTLS12,
 	}
 
-	// Connect independent NATS client mapped strictly for storage persistence bounds
 	nc, err := natsgo.Connect(cfg.NatsURL, natsgo.Secure(tlsConfig))
 	if err != nil {
 		return nil, fmt.Errorf("storage nats connection failed: %w", err)
@@ -349,65 +80,41 @@ func setupStorage(cfg MasterConfig) (storage.Provider, error) {
 	return natsjs.NewProvider(context.Background(), nc)
 }
 
-func startTriggerPublisher(b broker.Broker, cfg MasterConfig) {
-	ticker := time.NewTicker(cfg.TriggerInterval)
-	defer ticker.Stop()
-
-	// Seed with configured target if you want it to still trigger agent1 statically safely
-	if cfg.TargetNodeID != "" {
-		activeAgents.Store(cfg.TargetNodeID, time.Now())
-	}
-
-	for {
-		select {
-		case <-ticker.C:
-			count := 0
-			activeAgents.Range(func(key, value interface{}) bool {
-				agentID := key.(string)
-				subject := fmt.Sprintf("agent.trigger.getCatalog.%s", agentID)
-				logger.Debug("Publishing catalog trigger", "subject", subject)
-				err := b.Publish(subject, nil)
-				if err != nil {
-					logger.Error("Failed to publish trigger message", "subject", subject, "error", err)
-				}
-				count++
-				return true
-			})
-			logger.Info("Published triggers completed", "agents_triggered", count)
-		}
-	}
-}
-
 func main() {
-	// Initialize logger
 	logLevel := slog.LevelInfo
 	if os.Getenv("LOG_LEVEL") == "debug" {
 		logLevel = slog.LevelDebug
 	}
-	logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
 
 	logger.Info("Master server starting...")
 
-	var masterCfg MasterConfig
-	if err := envconfig.Process("MASTER", &masterCfg); err != nil {
+	var cfg MasterConfig
+	if err := envconfig.Process("MASTER", &cfg); err != nil {
 		logger.Error("Failed to process master config", "error", err)
 		os.Exit(1)
 	}
 
-	// Setup message broker
-	b, err := setupBroker(masterCfg)
+	b := broker.NewNatsBroadcaster(broker.Config{
+		NatsURL:         cfg.NatsURL,
+		NatsClientCert:  cfg.NatsClientCert,
+		NatsClientKey:   cfg.NatsClientKey,
+		NatsRootCA:      cfg.NatsRootCA,
+		TriggerInterval: cfg.TriggerInterval,
+		TargetNodeID:    cfg.TargetNodeID,
+	}, logger)
+
+	br, err := b.SetupBroker()
 	if err != nil {
 		logger.Error("Failed to setup message broker", "error", err)
 		os.Exit(1)
 	}
-	defer b.Close()
+	defer br.Close()
 	logger.Info("Connected to message broker successfully")
 
-	// Start the periodic trigger publisher
-	go startTriggerPublisher(b, masterCfg)
+	go b.StartTriggerPublisher(br)
 
-	// Load server certificate and key for gRPC
 	serverCert, err := tls.LoadX509KeyPair("certs/server.crt", "certs/server.key")
 	if err != nil {
 		logger.Error("failed to load server certificate and key", "error", err)
@@ -425,15 +132,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Bootstrap server setup
 	bootCreds := credentials.NewServerTLSFromCert(&serverCert)
 	bootServer := grpc.NewServer(grpc.Creds(bootCreds))
-	pb.RegisterCertificateAuthorityServer(bootServer, &caServer{
-		caCert:         caX509Cert,
-		caPrivKey:      caTLSCert.PrivateKey,
-		bootstrapToken: masterCfg.BootstrapToken,
-	})
-	
+	pb.RegisterCertificateAuthorityServer(bootServer, server.NewCAServer(caX509Cert, caTLSCert.PrivateKey, cfg.BootstrapToken, logger))
+
 	bootLis, err := net.Listen("tcp", ":50052")
 	if err != nil {
 		logger.Error("failed to listen bootstrap", "error", err)
@@ -446,7 +148,6 @@ func main() {
 		}
 	}()
 
-	// Load CA certificate for gRPC mTLS
 	caCert, err := os.ReadFile("certs/ca.crt")
 	if err != nil {
 		logger.Error("failed to read CA certificate", "error", err)
@@ -459,15 +160,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Load signing key
 	signingKey, err := loadPrivateKey("certs/master_signing.key")
 	if err != nil {
 		logger.Error("failed to load master signing key", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("Master signing key loaded.")
 
-	// Create TLS credentials for gRPC
 	grpcTLSConfig := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
@@ -475,34 +173,29 @@ func main() {
 	}
 	creds := credentials.NewTLS(grpcTLSConfig)
 
-	// Create gRPC server
 	s := grpc.NewServer(grpc.Creds(creds))
-	// Load Secrets Provider
 	secretProv, err := local.NewProvider("secrets.yaml")
 	if err != nil {
-		logger.Warn("Failed to load secrets.yaml, providing blank secret fallback", "error", err)
+		logger.Warn("Failed to load secrets.yaml", "error", err)
 	}
 
-	storageProv, err := setupStorage(masterCfg)
+	storageProv, err := setupStorage(cfg)
 	if err != nil {
 		logger.Error("Failed to bootstrap JS Storage persistence mapping natively", "error", err)
 		os.Exit(1)
 	}
 
-	pb.RegisterConfigurationMasterServer(s, &server{
-		signingKey: signingKey, 
-		secretProv: secretProv,
-		store:      storageProv,
-	})
+	cls := classifier.NewFileClassifier("classification.yaml", "roles")
+	pb.RegisterConfigurationMasterServer(s, server.NewServer(signingKey, secretProv, storageProv, cls, logger))
 	reflection.Register(s)
 
-	lis, err := net.Listen("tcp", port)
+	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
-		logger.Error("failed to listen", "port", port, "error", err)
+		logger.Error("failed to listen", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("Master server listening on gRPC", "port", port, "tls", "mTLS")
+	logger.Info("Master server listening on gRPC", "port", ":50051", "tls", "mTLS")
 	if err := s.Serve(lis); err != nil {
 		logger.Error("failed to serve gRPC", "error", err)
 		os.Exit(1)
