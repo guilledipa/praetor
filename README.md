@@ -143,12 +143,15 @@ digraph PraetorArchitecture {
 
 ## Core Resources
 
-Praetor ships with a core set of resources needed to deploy most applications out-of-the-box:
+Praetor ships with a core set of native Linux resources needed to deploy most applications out-of-the-box. These are compiled directly into the agent for maximum performance and reliability on base Linux distributions:
 
 *   **File:** Manage file contents, existence, permissions, and owners. 
 *   **Package:** Manage OS packages using an intelligent, pluggable provider that detects `apt`, `yum`, or `apk` automatically.
 *   **Service:** Control system daemon states (`running`, `stopped`, `enable` or `disable`) with native `systemd` support and a `service` fallback.
 *   **Exec:** Execute arbitrary shell commands, with built-in idempotency logic (`creates`, `onlyif`, `unless`).
+*   **User:** Manage deep configuration of Linux user accounts, mapping primary/secondary groups, homes, shells, and structural UIDs natively via `useradd`/`usermod`.
+*   **Group:** Establish and enforce structural groups directly against `/etc/group` binaries (`groupadd`/`groupmod`).
+*   **Cron:** Isolate, inject, and enforce scheduled cron jobs identically inside a user's `crontab -l` isolated via explicit UUID tagging, protecting manual job edits.
 
 ## Catalog Schema & Hydration
 
@@ -389,3 +392,27 @@ This single command handles compiling the gRPC abstractions and cleanly restruct
 
 - **Persistent State Compliance Reports**: Expand the `ReportState` handler on the Master to implement a `StorageProvider` (NATS JetStream Key/Value) that persistently caches the historical configuration drifts generated across the fleet, paving the way for a compliance dashboard.
 - **Multi-OS Package Manager Support**: Expand the `Package` resource plugin on the agent to dynamically swap `apt` out for `yum`, `dnf`, or `zypper` depending on the enforcing node's `$PATH` binary availability.
+- **Advanced Linux Primitives**: We fully established robust state management over structural Linux boundaries including `user`, `group`, and `cron` components, verified safely under the hood through Go Helper Process mocking abstractions.
+
+## Roadmap: Terraform-Style External RPC Plugin Engine
+
+While Praetor currently compiles its "Core" Linux plugins (File, User, Group, Service, Package, Cron, Exec) directly into the agent binary, the long-term vision is to decouple extensibility entirely using a **Hashicorp-style RPC Plugin Architecture**.
+
+### The "Core" Plugin vs "External" Plugins
+- **The Core Linux Plugin**: The resources built so far will be extracted into a primary `praetor-plugin-linux` standalone provider. 
+- **Ecosystem Expansion**: End users will be able to write completely isolated plugins in *any programming language* (Go, Python, Rust) without recompiling Praetor! You could drop a `praetor-plugin-mysql` or `praetor-plugin-aws` binary into the plugin folder, and Praetor will discover and orchestrate them dynamically.
+
+### How RPC Plugins Work
+When Praetor encounters a `mysql_user` resource in its declarative DAG, it won't execute it internally. Instead:
+1. Praetor daemon spins up the `praetor-plugin-mysql` binary.
+2. The Agent handshakes with the binary over a local UNIX Domain Socket (UDS) / localhost port via robust **gRPC**.
+3. It dispatches a `GetState(resource_id)` RPC call.
+4. The plugin securely returns the state evaluation, and Praetor schedules the drifts mathematically. If the plugin crashes, Praetor simply catches the RPC termination and flags the resource as failed without bringing down the orchestrator!
+
+### Kubernetes (K8s) Deployment Architecture
+Because plugins operate via isolated binaries communicating over gRPC UNIX Sockets, they translate seamlessly into Kubernetes topologies using pure cloud-native primitives.
+
+Plugins will not necessarily need to be bundled inside the single Master or Agent docker images.
+Instead, they will map out cleanly via **Pod Sidecars** or **Isolated DaemonSets**:
+- **Sidecar Model:** You deploy the Praetor Agent container. Inside the same Pod, you deploy a `praetor-plugin-mysql` container. They share a `emptyDir` volume mount located at `/var/run/praetor/plugins`. They securely multiplex RPC calls over that shared memory space instantly.
+- **DaemonSet Integration:** If deploying Agent operators widely, the Agent runs as a DaemonSet mounting a persistent Host UDS path where individual specialized operators listen to handle domain-specific workload mutations securely.

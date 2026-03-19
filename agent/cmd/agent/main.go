@@ -10,10 +10,13 @@ import (
 	"github.com/spf13/viper"
 
 	_ "github.com/guilledipa/praetor/agent/facts/core"
+	_ "github.com/guilledipa/praetor/agent/resources/cron"
 	_ "github.com/guilledipa/praetor/agent/resources/exec"
 	_ "github.com/guilledipa/praetor/agent/resources/file"
+	_ "github.com/guilledipa/praetor/agent/resources/group"
 	_ "github.com/guilledipa/praetor/agent/resources/pkg"
 	_ "github.com/guilledipa/praetor/agent/resources/svc"
+	_ "github.com/guilledipa/praetor/agent/resources/user"
 )
 
 func main() {
