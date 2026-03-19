@@ -23,6 +23,7 @@ import (
 	"time"
 
 	_ "github.com/guilledipa/praetor/agent/facts/core"     // Register core facts
+	_ "github.com/guilledipa/praetor/agent/resources/exec" // Register exec resource
 	_ "github.com/guilledipa/praetor/agent/resources/file" // Register file resource
 	_ "github.com/guilledipa/praetor/agent/resources/pkg"  // Register package resource
 	_ "github.com/guilledipa/praetor/agent/resources/svc"  // Register service resource

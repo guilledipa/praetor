@@ -20,3 +20,25 @@ spec:
       spec:
         path: /tmp/to_be_deleted.txt
         ensure: absent
+    - apiVersion: praetor.io/v1alpha1
+      kind: Package
+      metadata:
+        name: nginx
+      spec:
+        name: nginx
+        ensure: present
+    - apiVersion: praetor.io/v1alpha1
+      kind: Service
+      metadata:
+        name: nginx
+      spec:
+        name: nginx
+        ensure: running
+        enable: true
+    - apiVersion: praetor.io/v1alpha1
+      kind: Exec
+      metadata:
+        name: write_hello
+      spec:
+        command: "echo 'Hello from Praetor Exec!' > /tmp/praetor_exec.log"
+        creates: "/tmp/praetor_exec.log"

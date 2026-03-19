@@ -1,0 +1,30 @@
+[Unit]
+Description=Praetor Configuration Management Agent
+After=network.target
+
+[Service]
+Type=simple
+# Ensure you update the path to point to your compiled praetor agent binary
+ExecStart=/usr/local/bin/praetor-agent
+Restart=on-failure
+RestartSec=10
+
+# Environment variables can be overridden here or in an EnvironmentFile
+Environment="NATS_URL=nats://localhost:4222"
+Environment="NATS_CLIENT_CERT=/etc/praetor/certs/nats_client.crt"
+Environment="NATS_CLIENT_KEY=/etc/praetor/certs/nats_client.key"
+Environment="NATS_ROOT_CA=/etc/praetor/certs/ca.crt"
+Environment="MASTER_GRPC_ADDRESS=localhost:50051"
+Environment="MASTER_CLIENT_CERT=/etc/praetor/certs/master_client.crt"
+Environment="MASTER_CLIENT_KEY=/etc/praetor/certs/master_client.key"
+Environment="MASTER_ROOT_CA=/etc/praetor/certs/master-ca.crt"
+Environment="NODE_ID=agent1"
+Environment="LOG_LEVEL=info"
+
+# Security best practices: run as root only if needed for package/service management
+# Praetor needs root to install packages and manage systemd services
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

@@ -143,10 +143,19 @@ digraph PraetorArchitecture {
     go run main.go
     ```
 
+## Core Resources
+
+Praetor ships with a core set of resources needed to deploy most applications out-of-the-box:
+
+*   **File:** Manage file contents, existence, permissions, and owners. 
+*   **Package:** Manage OS packages using an intelligent, pluggable provider that detects `apt`, `yum`, or `apk` automatically.
+*   **Service:** Control system daemon states (`running`, `stopped`, `enable` or `disable`) with native `systemd` support and a `service` fallback.
+*   **Exec:** Execute arbitrary shell commands, with built-in idempotency logic (`creates`, `onlyif`, `unless`).
+
 ## Catalog Schema & Hydration
 
 Catalogs now follow a defined schema using Go structs located in the `schema/`
-directory. Resources within the catalog, such as `File`, are validated against
+directory. Resources within the catalog are validated against
 these schemas on the agent side.
 
 The Master **hydrates** the catalog content based on agent facts. String fields
@@ -286,7 +295,7 @@ To add a new source of custom facts:
 
 ## Developing New Resources
 
-To add support for a new resource type (e.g., `package`):
+To add support for a new resource type (e.g., `crontab`):
 
 1.  **Create Schema:** Define the struct for your resource in the `schema/`
     directory (e.g., `schema/package.go`), including `APIVersion`, `Kind`,

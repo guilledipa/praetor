@@ -35,17 +35,32 @@ func (s *Service) ID() string   { return s.Spec.Name }
 func (s *Service) Get() (resources.State, error) {
 	currentState := make(resources.State)
 	
-	cmd := exec.Command("systemctl", "is-active", s.Spec.Name)
-	err := cmd.Run()
+	initSys, err := detectInitSystem()
+	if err != nil {
+		return nil, err
+	}
+
+	var cmd *exec.Cmd
+	if initSys == "systemd" {
+		cmd = exec.Command("systemctl", "is-active", s.Spec.Name)
+	} else {
+		cmd = exec.Command("service", s.Spec.Name, "status")
+	}
+
+	err = cmd.Run()
 	if err == nil {
 		currentState["ensure"] = "running"
 	} else {
 		currentState["ensure"] = "stopped"
 	}
 
-	cmdEn := exec.Command("systemctl", "is-enabled", s.Spec.Name)
-	errEn := cmdEn.Run()
-	currentState["enable"] = (errEn == nil)
+	if initSys == "systemd" {
+		cmdEn := exec.Command("systemctl", "is-enabled", s.Spec.Name)
+		errEn := cmdEn.Run()
+		currentState["enable"] = (errEn == nil)
+	} else {
+		currentState["enable"] = false 
+	}
 	
 	return currentState, nil
 }
@@ -60,41 +75,73 @@ func (s *Service) Test(currentState resources.State) (bool, error) {
 	}
 	
 	if s.Spec.Enable != currentEnable {
-		slog.Debug("Service.Test: Drift detected", "id", s.ID(), "reason", "enable mismatch")
-		return false, nil
+		initSys, _ := detectInitSystem()
+		if initSys == "systemd" {
+			slog.Debug("Service.Test: Drift detected", "id", s.ID(), "reason", "enable mismatch")
+			return false, nil
+		}
 	}
 
 	slog.Debug("Service.Test: No drift detected", "id", s.ID())
 	return true, nil
 }
 
+func detectInitSystem() (string, error) {
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		return "systemd", nil
+	}
+	if _, err := exec.LookPath("service"); err == nil {
+		return "sysvinit", nil
+	}
+	return "", fmt.Errorf("no supported init system found on this system")
+}
+
 func (s *Service) Set() error {
+	initSys, err := detectInitSystem()
+	if err != nil {
+		return err
+	}
+
 	if s.Spec.Ensure == "running" {
 		slog.Info("Service.Set: Starting service", "id", s.ID())
-		cmd := exec.Command("systemctl", "start", s.Spec.Name)
+		var cmd *exec.Cmd
+		if initSys == "systemd" {
+			cmd = exec.Command("systemctl", "start", s.Spec.Name)
+		} else {
+			cmd = exec.Command("service", s.Spec.Name, "start")
+		}
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to start service %s: %w", s.Spec.Name, err)
 		}
 	} else if s.Spec.Ensure == "stopped" {
 		slog.Info("Service.Set: Stopping service", "id", s.ID())
-		cmd := exec.Command("systemctl", "stop", s.Spec.Name)
+		var cmd *exec.Cmd
+		if initSys == "systemd" {
+			cmd = exec.Command("systemctl", "stop", s.Spec.Name)
+		} else {
+			cmd = exec.Command("service", s.Spec.Name, "stop")
+		}
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to stop service %s: %w", s.Spec.Name, err)
 		}
 	}
 
-	if s.Spec.Enable {
-		slog.Info("Service.Set: Enabling service", "id", s.ID())
-		cmd := exec.Command("systemctl", "enable", s.Spec.Name)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to enable service %s: %w", s.Spec.Name, err)
+	if initSys == "systemd" {
+		if s.Spec.Enable {
+			slog.Info("Service.Set: Enabling service", "id", s.ID())
+			cmd := exec.Command("systemctl", "enable", s.Spec.Name)
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to enable service %s: %w", s.Spec.Name, err)
+			}
+		} else {
+			slog.Info("Service.Set: Disabling service", "id", s.ID())
+			cmd := exec.Command("systemctl", "disable", s.Spec.Name)
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to disable service %s: %w", s.Spec.Name, err)
+			}
 		}
 	} else {
-		slog.Info("Service.Set: Disabling service", "id", s.ID())
-		cmd := exec.Command("systemctl", "disable", s.Spec.Name)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to disable service %s: %w", s.Spec.Name, err)
-		}
+		slog.Warn("Service.Set: Enable/disable not supported for sysvinit fallback", "id", s.ID())
 	}
 
 	return nil
