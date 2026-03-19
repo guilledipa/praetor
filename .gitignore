@@ -7,6 +7,8 @@ certs/
 # Go / Binary outputs
 bin/
 *.exe
+agent/agent
+master/master
 *.test
 *.out
 # Editor / OS
