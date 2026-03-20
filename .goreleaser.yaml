@@ -29,7 +29,7 @@ nfpms:
     file_name_template: '{{ .ProjectName }}-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     homepage: https://github.com/guilledipa/praetor
     description: "Praetor Infrastructure Management Agent"
-    maintainer: "Guillermo"
+    maintainer: "GuilleDipa"
     license: "MIT"
     formats:
       - deb
