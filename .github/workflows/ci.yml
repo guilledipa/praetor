@@ -20,6 +20,23 @@ jobs:
     - name: Install dependencies and Tidy
       run: make tidy
 
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.60
+        working-directory: .
+        args: --timeout=5m
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        severity: 'CRITICAL,HIGH'
+
     - name: Test globally across workspace
       run: make test
 

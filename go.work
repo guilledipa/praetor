@@ -6,4 +6,5 @@ use (
 	./master
 	./pkg
 	./plugins/linux
+	./e2e
 )
