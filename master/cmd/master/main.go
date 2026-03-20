@@ -20,7 +20,9 @@ import (
 	"github.com/guilledipa/praetor/master/broker"
 	"github.com/guilledipa/praetor/master/classifier"
 	"github.com/guilledipa/praetor/master/server"
+	"github.com/guilledipa/praetor/pkg/secrets"
 	"github.com/guilledipa/praetor/pkg/secrets/local"
+	"github.com/guilledipa/praetor/pkg/secrets/vault"
 	"github.com/guilledipa/praetor/pkg/storage"
 	"github.com/guilledipa/praetor/pkg/storage/natsjs"
 	natsgo "github.com/nats-io/nats.go"
@@ -119,6 +121,7 @@ func main() {
 	viper.SetDefault("trigger_interval", "15s")
 	viper.SetDefault("target_node_id", "agent1")
 	viper.SetDefault("bootstrap_token", "praetor-secret-token")
+	viper.SetDefault("secrets_backend", "local") // 'local' or 'vault'
 
 	var cfg MasterConfig
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -204,9 +207,18 @@ func main() {
 	creds := credentials.NewTLS(grpcTLSConfig)
 
 	s := grpc.NewServer(grpc.Creds(creds), grpc.StatsHandler(otelgrpc.NewServerHandler()))
-	secretProv, err := local.NewProvider("secrets.yaml")
-	if err != nil {
-		logger.Warn("Failed to load secrets.yaml", "error", err)
+	var secretProv secrets.Provider
+	var secretsErr error
+	if viper.GetString("secrets_backend") == "vault" {
+		logger.Info("Initializing Vault Secrets Provider")
+		secretProv, secretsErr = vault.NewProvider()
+	} else {
+		logger.Info("Initializing Local File Secrets Provider (secrets.yaml)")
+		secretProv, secretsErr = local.NewProvider("secrets.yaml")
+	}
+
+	if secretsErr != nil {
+		logger.Warn("Failed to initialize selected secrets provider", "error", secretsErr)
 	}
 
 	storageProv, ncStorage, err := setupStorage(cfg)

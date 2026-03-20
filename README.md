@@ -90,15 +90,11 @@ digraph PraetorArchitecture {
 
 1.  **Prerequisites:** Docker, Docker Compose, Go, OpenSSL, NATS CLI, protoc.
 
-2.  **Generate Certificates:**
+2.  **Generate Certificates (Auto-TLS):**
 
-    ```bash
-    ./generate_certs.sh
-    ./generate_signing_keys.sh
-    ```
+    Praetor now handles PKI out-of-the-box! You do not need to manage certificates manually.
+    When `praetor-master` boots, if it detects a missing `master/certs/ca.crt`, it will **automatically** generate the entire unified CA, NATS server keys, and Master signing credentials cross-platform.
 
-    This creates certificates for NATS, Master gRPC, Agent gRPC client, and keys
-    for catalog signing.
 
 3.  **Generate Proto Code:** If you modify `proto/master.proto`, regenerate the
     Go code:
@@ -213,6 +209,14 @@ Example: Get facts from `agent1`:
 
 ```bash
 nats --tlscert ./nats/certs/client.crt --tlskey ./nats/certs/client.key --tlsca ./nats/certs/ca.crt --server=nats://localhost:4222 req commands.facts.get '{"facts": ["os", "hostname"]}'
+```
+
+### Observability / Metrics
+
+The Master node natively exposes an OpenMetrics / Prometheus `/metrics` endpoint on port `8080`.
+You can bind Prometheus or Datadog scrapers to monitor the fleet's orchestration health directly!
+```bash
+curl http://localhost:8080/metrics
 ```
 
 ## Key Concepts
