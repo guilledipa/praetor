@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log/slog"
@@ -142,17 +143,34 @@ func connectNATS(natsURL string, tlsConfig *tls.Config) (*nats.Conn, error) {
 
 func connectMasterGRPC(cfg Config, tlsConfig *tls.Config) (masterpb.ConfigurationMasterClient, *grpc.ClientConn, error) {
 	creds := credentials.NewTLS(tlsConfig)
-	conn, err := grpc.Dial(
-		cfg.MasterGRPCAddress,
+	
+	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to dial master gRPC server: %w", err)
 	}
 
-	client := masterpb.NewConfigurationMasterClient(conn)
-	return client, conn, nil
+	var conn *grpc.ClientConn
+	var err error
+	maxRetries := 10
+
+	for i := 0; i < maxRetries; i++ {
+		// Use a blocking dial with a short timeout per attempt
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		conn, err = grpc.DialContext(ctx, cfg.MasterGRPCAddress, append(dialOpts, grpc.WithBlock())...)
+		cancel()
+
+		if err == nil {
+			return masterpb.NewConfigurationMasterClient(conn), conn, nil
+		}
+		
+		backoff := time.Duration(1<<i) * time.Second
+		if backoff > 30*time.Second {
+			backoff = 30 * time.Second
+		}
+		time.Sleep(backoff)
+	}
+
+	return nil, nil, fmt.Errorf("failed to dial master gRPC server after %d attempts: %w", maxRetries, err)
 }
 
 type natsMessageHandler func(msg *nats.Msg)

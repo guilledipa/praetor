@@ -10,8 +10,11 @@ import (
 	"io/ioutil"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/guilledipa/praetor/master/broker"
 	"github.com/guilledipa/praetor/master/classifier"
@@ -232,6 +235,14 @@ func main() {
 		logger.Error("failed to listen", "error", err)
 		os.Exit(1)
 	}
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		logger.Info("Metrics server listening on", "port", ":8080")
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			logger.Error("Metrics server failed", "error", err)
+		}
+	}()
 
 	logger.Info("Master server listening on gRPC", "port", ":50051", "tls", "mTLS")
 	if err := s.Serve(lis); err != nil {

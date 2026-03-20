@@ -1,0 +1,43 @@
+version: 2
+project_name: praetor
+
+builds:
+  - id: praetor-master
+    main: ./master/main.go
+    binary: praetor-master
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+  - id: praetor-agent
+    main: ./agent/main.go
+    binary: praetor-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+nfpms:
+  - id: praetor-agent
+    file_name_template: '{{ .ProjectName }}-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    homepage: https://github.com/guilledipa/praetor
+    description: "Praetor Infrastructure Management Agent"
+    maintainer: "Guillermo"
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
+    builds:
+      - praetor-agent
+
+release:
+  github:
+    owner: guilledipa
+    name: praetor
