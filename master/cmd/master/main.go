@@ -16,18 +16,19 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/guilledipa/praetor/pkg/pki"
 	"github.com/guilledipa/praetor/master/broker"
 	"github.com/guilledipa/praetor/master/classifier"
+	"github.com/guilledipa/praetor/master/gitops"
 	"github.com/guilledipa/praetor/master/server"
+	"github.com/guilledipa/praetor/pkg/pki"
 	"github.com/guilledipa/praetor/pkg/secrets"
 	"github.com/guilledipa/praetor/pkg/secrets/local"
 	"github.com/guilledipa/praetor/pkg/secrets/vault"
 	"github.com/guilledipa/praetor/pkg/storage"
 	"github.com/guilledipa/praetor/pkg/storage/natsjs"
 	"github.com/guilledipa/praetor/pkg/telemetry"
-	natsgo "github.com/nats-io/nats.go"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
+	natsgo "github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -36,13 +37,16 @@ import (
 )
 
 type MasterConfig struct {
-	NatsURL         string        `mapstructure:"nats_url"`
-	NatsClientCert  string        `mapstructure:"nats_client_cert"`
-	NatsClientKey   string        `mapstructure:"nats_client_key"`
-	NatsRootCA      string        `mapstructure:"nats_root_ca"`
-	TriggerInterval time.Duration `mapstructure:"trigger_interval"`
-	TargetNodeID    string        `mapstructure:"target_node_id"`
-	BootstrapToken  string        `mapstructure:"bootstrap_token"`
+	NatsURL            string        `mapstructure:"nats_url"`
+	NatsClientCert     string        `mapstructure:"nats_client_cert"`
+	NatsClientKey      string        `mapstructure:"nats_client_key"`
+	NatsRootCA         string        `mapstructure:"nats_root_ca"`
+	TriggerInterval    time.Duration `mapstructure:"trigger_interval"`
+	TargetNodeID       string        `mapstructure:"target_node_id"`
+	BootstrapToken     string        `mapstructure:"bootstrap_token"`
+	GitOpsRepo         string        `mapstructure:"gitops_repo"`
+	GitOpsBranch       string        `mapstructure:"gitops_branch"`
+	GitOpsSyncInterval time.Duration `mapstructure:"gitops_sync_interval"`
 }
 
 func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
@@ -134,6 +138,9 @@ func main() {
 	viper.SetDefault("target_node_id", "agent1")
 	viper.SetDefault("bootstrap_token", "praetor-secret-token")
 	viper.SetDefault("secrets_backend", "local") // 'local' or 'vault'
+	viper.SetDefault("gitops_repo", "")          // e.g. https://github.com/myorg/praetor-config.git
+	viper.SetDefault("gitops_branch", "main")
+	viper.SetDefault("gitops_sync_interval", "60s")
 
 	var cfg MasterConfig
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -239,7 +246,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	cls := classifier.NewFileClassifier("classification.yaml", "roles")
+	classFile := "classification.yaml"
+	rolesDir := "roles"
+
+	if cfg.GitOpsRepo != "" {
+		logger.Info("GitOps is enabled. Starting initial clone...")
+		localPath := "/var/lib/praetor/gitops"
+		syncer := gitops.NewSyncer(cfg.GitOpsRepo, cfg.GitOpsBranch, localPath, cfg.GitOpsSyncInterval, logger)
+		if err := syncer.Init(); err != nil {
+			logger.Error("Failed to initialize GitOps repository", "error", err)
+			os.Exit(1)
+		}
+
+		go syncer.Start(context.Background())
+
+		classFile = fmt.Sprintf("%s/classification.yaml", localPath)
+		rolesDir = fmt.Sprintf("%s/roles", localPath)
+	}
+
+	cls := classifier.NewFileClassifier(classFile, rolesDir)
 	pb.RegisterConfigurationMasterServer(s, server.NewServer(signingKey, secretProv, storageProv, cls, logger))
 	reflection.Register(s)
 
