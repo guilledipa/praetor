@@ -16,6 +16,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/guilledipa/praetor/pkg/pki"
 	"github.com/guilledipa/praetor/master/broker"
 	"github.com/guilledipa/praetor/master/classifier"
 	"github.com/guilledipa/praetor/master/server"
@@ -97,6 +98,11 @@ func main() {
 	slog.SetDefault(logger)
 
 	logger.Info("Master server starting...")
+
+	if err := pki.AutoProvisionPKI(logger); err != nil {
+		logger.Error("Failed to auto-provision TLS PKI", "error", err)
+		os.Exit(1)
+	}
 
 	viper.SetEnvPrefix("PRAETOR_MASTER")
 	viper.AutomaticEnv()
