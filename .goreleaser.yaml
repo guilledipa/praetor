@@ -34,7 +34,7 @@ nfpms:
     formats:
       - deb
       - rpm
-    builds:
+    ids:
       - praetor-agent
 
 release:
