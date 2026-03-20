@@ -23,19 +23,19 @@ jobs:
     - name: Run golangci-lint (Agent)
       uses: golangci/golangci-lint-action@v6
       with:
-        version: latest
+        version: master
         working-directory: agent
 
     - name: Run golangci-lint (Master)
       uses: golangci/golangci-lint-action@v6
       with:
-        version: latest
+        version: master
         working-directory: master
 
     - name: Run golangci-lint (Pkg)
       uses: golangci/golangci-lint-action@v6
       with:
-        version: latest
+        version: master
         working-directory: pkg
 
     - name: Run Trivy vulnerability scanner
