@@ -11,6 +11,7 @@ COPY master/ /app/master/
 COPY agent/ /app/agent/
 COPY cli/ /app/cli/
 COPY plugins/ /app/plugins/
+COPY e2e/ /app/e2e/
 
 # Build the master
 WORKDIR /app/master
