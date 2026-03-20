@@ -13,6 +13,8 @@ import (
 	masterpb "github.com/guilledipa/praetor/proto/gen/master"
 	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -104,13 +106,16 @@ func (a *Agent) Run() error {
 	
 	go startJetStreamPullSubscriber(js, cfg.NodeID, triggerSubject, "AGENT_TRIGGERS", logger, func(msg *nats.Msg) {
 		logger.Info("Received catalog trigger", "subject", msg.Subject)
+		
+		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
+
 		exec := &engine.Executor{
 			NodeID:       cfg.NodeID,
 			MasterClient: masterClient,
 			MasterPubKey: masterPubKey,
 			Logger:       logger,
 		}
-		exec.FetchAndApplyCatalog()
+		exec.FetchAndApplyCatalog(ctx)
 	})
 
 	logger.Info("Agent setup complete, waiting for triggers and commands.")

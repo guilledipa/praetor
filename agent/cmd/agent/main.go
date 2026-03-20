@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"github.com/guilledipa/praetor/agent/pki"
 	"github.com/spf13/viper"
 
+	"github.com/guilledipa/praetor/pkg/telemetry"
 	"github.com/guilledipa/praetor/agent/plugin"
 	_ "github.com/guilledipa/praetor/agent/facts/core"
 )
@@ -42,6 +44,17 @@ func main() {
 	slog.SetDefault(logger)
 
 	logger.Info("Agent starting...")
+
+	tp, err := telemetry.InitProvider(context.Background(), logger, "praetor-agent")
+	if err != nil {
+		logger.Error("Failed to initialize OpenTelemetry", "error", err)
+	} else if tp != nil {
+		defer func() {
+			if err := tp.Shutdown(context.Background()); err != nil {
+				logger.Error("Error shutting down tracer provider", "error", err)
+			}
+		}()
+	}
 
 	if err := plugin.InitPlugins(logger); err != nil {
 		logger.Error("Failed to initialize RPC plugins", "error", err)

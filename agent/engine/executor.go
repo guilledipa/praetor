@@ -38,8 +38,8 @@ type Executor struct {
 	Logger       *slog.Logger
 }
 
-func (e *Executor) FetchAndApplyCatalog() {
-	ctx, span := otel.Tracer("agent-engine").Start(context.Background(), "FetchAndApplyCatalog")
+func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
+	ctx, span := otel.Tracer("agent-engine").Start(ctx, "FetchAndApplyCatalog")
 	defer span.End()
 
 	e.Logger.Info("--- Running Configuration Check ---")

@@ -25,6 +25,7 @@ import (
 	"github.com/guilledipa/praetor/pkg/secrets/vault"
 	"github.com/guilledipa/praetor/pkg/storage"
 	"github.com/guilledipa/praetor/pkg/storage/natsjs"
+	"github.com/guilledipa/praetor/pkg/telemetry"
 	natsgo "github.com/nats-io/nats.go"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
 	"github.com/spf13/viper"
@@ -100,6 +101,17 @@ func main() {
 	slog.SetDefault(logger)
 
 	logger.Info("Master server starting...")
+
+	tp, err := telemetry.InitProvider(context.Background(), logger, "praetor-master")
+	if err != nil {
+		logger.Error("Failed to initialize OpenTelemetry", "error", err)
+	} else if tp != nil {
+		defer func() {
+			if err := tp.Shutdown(context.Background()); err != nil {
+				logger.Error("Error shutting down tracer provider", "error", err)
+			}
+		}()
+	}
 
 	if err := pki.AutoProvisionPKI(logger); err != nil {
 		logger.Error("Failed to auto-provision TLS PKI", "error", err)

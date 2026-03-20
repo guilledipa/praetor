@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 
 	pkgbroker "github.com/guilledipa/praetor/pkg/broker"
 	"github.com/guilledipa/praetor/pkg/broker/nats"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Config struct {
@@ -97,19 +100,29 @@ func (n *NatsBroadcaster) StartTriggerPublisher(b pkgbroker.Broker) {
 	for {
 		select {
 		case <-ticker.C:
+			ctx, span := otel.Tracer("praetor-master").Start(context.Background(), "TriggerCatalogUpdate")
+			
 			count := 0
 			n.activeAgents.Range(func(key, value interface{}) bool {
 				agentID := key.(string)
 				subject := fmt.Sprintf("agent.trigger.getCatalog.%s", agentID)
+
+				// Create a child span per agent if needed, or just link it.
+				agentCtx, agentSpan := otel.Tracer("praetor-master").Start(ctx, "PublishTrigger")
+				agentSpan.SetAttributes(attribute.String("agent.id", agentID))
+
 				n.logger.Debug("Publishing catalog trigger", "subject", subject)
-				err := b.Publish(subject, nil)
+				err := b.Publish(agentCtx, subject, nil)
 				if err != nil {
 					n.logger.Error("Failed to publish trigger message", "subject", subject, "error", err)
+					agentSpan.RecordError(err)
 				}
+				agentSpan.End()
 				count++
 				return true
 			})
 			n.logger.Info("Published triggers completed", "agents_triggered", count)
+			span.End()
 		}
 	}
 }

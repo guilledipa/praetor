@@ -1,12 +1,15 @@
 package nats
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"time"
 
 	"github.com/guilledipa/praetor/pkg/broker"
 	natsgo "github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type natsBroker struct {
@@ -21,6 +24,13 @@ type natsMessage struct {
 func (m *natsMessage) Subject() string { return m.msg.Subject }
 func (m *natsMessage) Data() []byte    { return m.msg.Data }
 func (m *natsMessage) Ack() error      { return m.msg.Ack() }
+func (m *natsMessage) Headers() map[string][]string {
+	res := make(map[string][]string)
+	for k, v := range m.msg.Header {
+		res[k] = v
+	}
+	return res
+}
 
 type natsSubscription struct {
 	sub *natsgo.Subscription
@@ -70,15 +80,15 @@ func (b *natsBroker) Close() error {
 	return nil
 }
 
-func (b *natsBroker) Publish(subject string, data []byte) error {
-	return b.nc.Publish(subject, data)
-}
+func (b *natsBroker) Publish(ctx context.Context, subject string, data []byte) error {
+	msg := natsgo.NewMsg(subject)
+	msg.Data = data
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(msg.Header))
 
-func (b *natsBroker) PublishStream(subject string, data []byte) error {
 	if b.js == nil {
-		return b.Publish(subject, data) // fallback to core
+		return b.nc.PublishMsg(msg)
 	}
-	_, err := b.js.Publish(subject, data)
+	_, err := b.js.PublishMsg(msg)
 	return err
 }
 

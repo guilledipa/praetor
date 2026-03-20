@@ -25,9 +25,17 @@ services:
       - NATS_CLIENT_KEY=/app/nats/certs/client.key
       - NATS_ROOT_CA=/app/nats/certs/ca.crt
       - TRIGGER_INTERVAL=15s
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
     volumes:
       - ./master:/app/master
       - ./nats/certs:/app/nats/certs:ro
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
 
 volumes:
   nats_data: {}
