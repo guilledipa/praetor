@@ -3,8 +3,8 @@ go 1.25.0
 use (
 	./agent
 	./cli
+	./e2e
 	./master
 	./pkg
 	./plugins/linux
-	./e2e
 )
