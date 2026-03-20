@@ -20,12 +20,23 @@ jobs:
     - name: Install dependencies and Tidy
       run: make tidy
 
-    - name: Run golangci-lint
+    - name: Run golangci-lint (Agent)
       uses: golangci/golangci-lint-action@v6
       with:
         version: v1.60
-        working-directory: .
-        args: --timeout=5m
+        working-directory: agent
+
+    - name: Run golangci-lint (Master)
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.60
+        working-directory: master
+
+    - name: Run golangci-lint (Pkg)
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.60
+        working-directory: pkg
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
