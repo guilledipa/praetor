@@ -3,7 +3,7 @@ project_name: praetor
 
 builds:
   - id: praetor-master
-    main: ./master/main.go
+    main: ./master/cmd/master/main.go
     binary: praetor-master
     env:
       - CGO_ENABLED=0
@@ -14,7 +14,7 @@ builds:
       - arm64
 
   - id: praetor-agent
-    main: ./agent/main.go
+    main: ./agent/cmd/agent/main.go
     binary: praetor-agent
     env:
       - CGO_ENABLED=0
