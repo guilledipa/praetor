@@ -14,8 +14,10 @@ import (
 )
 
 type natsProvider struct {
-	js jetstream.JetStream
-	kv jetstream.KeyValue
+	js       jetstream.JetStream
+	kv       jetstream.KeyValue // PRAETOR_REPORTS
+	specs    jetstream.KeyValue // PRAETOR_SPECS
+	statuses jetstream.KeyValue // PRAETOR_STATUS
 }
 
 // NewProvider binds to an active NATS Connection and boots a persistent JetStream KeyValue Bucket.
@@ -35,6 +37,26 @@ func NewProvider(ctx context.Context, nc *nats.Conn) (storage.Provider, error) {
 		return nil, fmt.Errorf("failed to bind KV bucket: %w", err)
 	}
 
+	// Build specs KeyValue engine
+	specs, err := js.CreateOrUpdateKeyValue(ctx, jetstream.KeyValueConfig{
+		Bucket:      "PRAETOR_SPECS",
+		Description: "Granular Agent Resource Specification State",
+		History:     10,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind SPECS KV bucket: %w", err)
+	}
+
+	// Build statuses KeyValue engine
+	statuses, err := js.CreateOrUpdateKeyValue(ctx, jetstream.KeyValueConfig{
+		Bucket:      "PRAETOR_STATUS",
+		Description: "Granular Agent Resource Observed Status State",
+		History:     10,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind STATUS KV bucket: %w", err)
+	}
+
 	// Boot an Audit Stream specifically for retaining operator actions permanently
 	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     "PRAETOR_AUDIT",
@@ -45,7 +67,7 @@ func NewProvider(ctx context.Context, nc *nats.Conn) (storage.Provider, error) {
 		return nil, fmt.Errorf("failed to bind Audit stream: %w", err)
 	}
 
-	return &natsProvider{js: js, kv: kv}, nil
+	return &natsProvider{js: js, kv: kv, specs: specs, statuses: statuses}, nil
 }
 
 // ReportLog implements the persistent JSON compliance trace
@@ -177,4 +199,60 @@ func (p *natsProvider) StoreAuditLog(ctx context.Context, action string, targetN
 	}
 
 	return nil
+}
+
+func (p *natsProvider) StoreResourceSpec(ctx context.Context, nodeID, kind, name string, data []byte) error {
+	key := fmt.Sprintf("nodes.%s.spec.%s.%s", sanitizeKey(nodeID), sanitizeKey(kind), sanitizeKey(name))
+	_, err := p.specs.Put(ctx, key, data)
+	return err
+}
+
+func (p *natsProvider) StoreResourceStatus(ctx context.Context, nodeID, kind, name string, data []byte) error {
+	key := fmt.Sprintf("nodes.%s.status.%s.%s", sanitizeKey(nodeID), sanitizeKey(kind), sanitizeKey(name))
+	_, err := p.statuses.Put(ctx, key, data)
+	return err
+}
+
+func (p *natsProvider) GetAgentSpecs(ctx context.Context, nodeID string) (map[string][]byte, error) {
+	keys, err := p.specs.Keys(ctx)
+	if err != nil {
+		if err == jetstream.ErrNoKeysFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	res := make(map[string][]byte)
+	prefix := fmt.Sprintf("nodes.%s.spec.", sanitizeKey(nodeID))
+	for _, k := range keys {
+		if strings.HasPrefix(k, prefix) {
+			entry, err := p.specs.Get(ctx, k)
+			if err != nil {
+				continue
+			}
+			res[k] = entry.Value()
+		}
+	}
+	return res, nil
+}
+
+func (p *natsProvider) GetAgentStatuses(ctx context.Context, nodeID string) (map[string][]byte, error) {
+	keys, err := p.statuses.Keys(ctx)
+	if err != nil {
+		if err == jetstream.ErrNoKeysFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	res := make(map[string][]byte)
+	prefix := fmt.Sprintf("nodes.%s.status.", sanitizeKey(nodeID))
+	for _, k := range keys {
+		if strings.HasPrefix(k, prefix) {
+			entry, err := p.statuses.Get(ctx, k)
+			if err != nil {
+				continue
+			}
+			res[k] = entry.Value()
+		}
+	}
+	return res, nil
 }

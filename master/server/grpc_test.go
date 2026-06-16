@@ -33,6 +33,22 @@ func (m *mockStore) StoreAuditLog(ctx context.Context, action string, targetNode
 	return nil
 }
 
+func (m *mockStore) StoreResourceSpec(ctx context.Context, nodeID, kind, name string, data []byte) error {
+	return nil
+}
+
+func (m *mockStore) StoreResourceStatus(ctx context.Context, nodeID, kind, name string, data []byte) error {
+	return nil
+}
+
+func (m *mockStore) GetAgentSpecs(ctx context.Context, nodeID string) (map[string][]byte, error) {
+	return nil, nil
+}
+
+func (m *mockStore) GetAgentStatuses(ctx context.Context, nodeID string) (map[string][]byte, error) {
+	return nil, nil
+}
+
 type mockClassifier struct{}
 
 func (m *mockClassifier) Evaluate(nodeID string, facts map[string]string) ([]json.RawMessage, error) {

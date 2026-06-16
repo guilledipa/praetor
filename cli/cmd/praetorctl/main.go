@@ -4,14 +4,19 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	pb "github.com/guilledipa/praetor/proto/gen/master"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -237,7 +242,135 @@ func (m model) View() string {
 	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, body))
 }
 
+func runWatchMode() {
+	certPath := "../master/certs/server.crt"
+	if _, err := os.Stat("../../../master/certs/server.crt"); err == nil {
+		certPath = "../../../master/certs/server.crt"
+	} else if _, err := os.Stat("master/certs/server.crt"); err == nil {
+		certPath = "master/certs/server.crt"
+	}
+
+	keyPath := "../master/certs/server.key"
+	if _, err := os.Stat("../../../master/certs/server.key"); err == nil {
+		keyPath = "../../../master/certs/server.key"
+	} else if _, err := os.Stat("master/certs/server.key"); err == nil {
+		keyPath = "master/certs/server.key"
+	}
+
+	caPath := "../master/certs/ca.crt"
+	if _, err := os.Stat("../../../master/certs/ca.crt"); err == nil {
+		caPath = "../../../nats/certs/ca.crt"
+	} else if _, err := os.Stat("master/certs/ca.crt"); err == nil {
+		caPath = "master/certs/ca.crt"
+	}
+	// Fallback to nats certs if needed
+	if _, err := os.Stat("nats/certs/ca.crt"); err == nil {
+		caPath = "nats/certs/ca.crt"
+		certPath = "nats/certs/client.crt"
+		keyPath = "nats/certs/client.key"
+	}
+
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		fmt.Printf("Failed to load NATS client certs for watch: %v\n", err)
+		os.Exit(1)
+	}
+	caCert, err := os.ReadFile(caPath)
+	if err != nil {
+		fmt.Printf("Failed to read NATS CA: %v\n", err)
+		os.Exit(1)
+	}
+	caPool := x509.NewCertPool()
+	caPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caPool,
+	}
+
+	nc, err := nats.Connect("nats://localhost:4222", nats.Secure(tlsConfig))
+	if err != nil {
+		fmt.Printf("Failed to connect to NATS for watch: %v\n", err)
+		os.Exit(1)
+	}
+	defer nc.Close()
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		fmt.Printf("Failed to init jetstream: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	statusKV, err := js.KeyValue(ctx, "PRAETOR_STATUS")
+	if err != nil {
+		fmt.Printf("Failed to bind status KV: %v\n", err)
+		os.Exit(1)
+	}
+
+	watcher, err := statusKV.Watch(ctx, "nodes.*.status.>")
+	if err != nil {
+		fmt.Printf("Failed to watch status KV: %v\n", err)
+		os.Exit(1)
+	}
+	defer watcher.Stop()
+
+	fmt.Println("⚜  WATCHING NODE COMPLIANCE STATUS MUTATIONS IN REAL-TIME  ⚜")
+	fmt.Println("------------------------------------------------------------")
+
+	for entry := range watcher.Updates() {
+		if entry == nil {
+			continue
+		}
+		if entry.Operation() == jetstream.KeyValuePut {
+			var statusObj struct {
+				APIVersion string `json:"apiVersion"`
+				Kind       string `json:"kind"`
+				Metadata   struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
+				Status struct {
+					Phase     string `json:"phase"`
+					Compliant bool   `json:"compliant"`
+					Message   string `json:"message"`
+				} `json:"status"`
+			}
+			if err := json.Unmarshal(entry.Value(), &statusObj); err != nil {
+				continue
+			}
+
+			parts := strings.Split(entry.Key(), ".")
+			nodeID := "unknown"
+			if len(parts) > 1 {
+				nodeID = parts[1]
+			}
+
+			timestamp := time.Now().Format("15:04:05")
+			statusSymbol := "✓"
+			statusColor := "\033[32m" // Green
+			if !statusObj.Status.Compliant {
+				statusSymbol = "✗"
+				statusColor = "\033[31m" // Red
+			}
+			resetColor := "\033[0m"
+
+			fmt.Printf("[%s] Node: %-12s | Resource: %-30s | Status: %s%s %-9s%s | Message: %s\n",
+				timestamp, nodeID, statusObj.Metadata.Name,
+				statusColor, statusSymbol, statusObj.Status.Phase, resetColor,
+				statusObj.Status.Message)
+		}
+	}
+}
+
 func main() {
+	watchFlag := flag.Bool("watch", false, "Watch node compliance status mutations in real-time")
+	flag.Parse()
+
+	if *watchFlag {
+		runWatchMode()
+		return
+	}
+
 	// Usually PRAETORCTL would mount certificates passed by operator arguments.
 	// We bind statically to workspace certificates for local dev.
 	certPath := os.Getenv("PRAETOR_CERT")

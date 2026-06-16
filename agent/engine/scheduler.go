@@ -34,6 +34,7 @@ type scheduler struct {
 	totalNodes   int
 	logger       *slog.Logger
 	appliedCount int
+	skipReasons  map[string]string
 }
 
 func newScheduler(rawList []resources.Resource, logger *slog.Logger) (*scheduler, error) {
@@ -80,14 +81,15 @@ func newScheduler(rawList []resources.Resource, logger *slog.Logger) (*scheduler
 	}
 
 	return &scheduler{
-		states:     states,
-		inDegree:   inDegree,
-		adj:        adj,
-		resMap:     resMap,
-		readyQueue: make(chan string, len(rawList)),
-		doneChan:   make(chan struct{}),
-		totalNodes: len(rawList),
-		logger:     logger,
+		states:      states,
+		inDegree:    inDegree,
+		adj:         adj,
+		resMap:      resMap,
+		readyQueue:  make(chan string, len(rawList)),
+		doneChan:    make(chan struct{}),
+		totalNodes:  len(rawList),
+		logger:      logger,
+		skipReasons: make(map[string]string),
 	}, nil
 }
 
@@ -156,7 +158,7 @@ func (s *scheduler) processNode(ctx context.Context, name string, applyFunc func
 	if err != nil || !compliant {
 		s.states[name] = StateFailed
 		s.logger.Error("Resource failed execution", "name", name, "error", err, "message", msg)
-		s.skipDependents(name, fmt.Sprintf("Dependency %s failed or is non-compliant", name))
+		s.skipDependents(name, name)
 	} else {
 		s.states[name] = StateSucceeded
 		s.logger.Debug("Resource completed successfully", "name", name)
@@ -178,13 +180,15 @@ func (s *scheduler) processNode(ctx context.Context, name string, applyFunc func
 	}
 }
 
-func (s *scheduler) skipDependents(name string, reason string) {
+func (s *scheduler) skipDependents(name string, rootCause string) {
 	for _, dep := range s.adj[name] {
 		if s.states[dep] == StatePending || s.states[dep] == StateRunning {
 			s.states[dep] = StateSkipped
+			reason := fmt.Sprintf("Dependency %s failed", rootCause)
+			s.skipReasons[dep] = reason
 			s.logger.Warn("Skipping resource due to parent failure", "name", dep, "reason", reason)
 			s.appliedCount++
-			s.skipDependents(dep, fmt.Sprintf("Transitive dependency %s failed", dep))
+			s.skipDependents(dep, rootCause)
 		}
 	}
 }

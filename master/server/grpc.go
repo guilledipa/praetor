@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -36,6 +37,67 @@ func NewServer(signingKey ed25519.PrivateKey, secretProv secrets.Provider, store
 	}
 }
 
+func (s *Server) signAndPersistCatalog(ctx context.Context, nodeID string, resourcesList []any) ([]any, error) {
+	signedList := make([]any, 0, len(resourcesList))
+
+	for i, res := range resourcesList {
+		resBytes, err := json.Marshal(res)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal resource %d: %w", i, err)
+		}
+		var resMap map[string]any
+		if err := json.Unmarshal(resBytes, &resMap); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal resource %d to map: %w", i, err)
+		}
+
+		metadata, ok := resMap["metadata"].(map[string]any)
+		if !ok {
+			metadata = make(map[string]any)
+			resMap["metadata"] = metadata
+		}
+
+		annotations, ok := metadata["annotations"].(map[string]any)
+		if !ok {
+			annotations = make(map[string]any)
+			metadata["annotations"] = annotations
+		}
+
+		delete(annotations, "praetor.io/signature")
+
+		cleanBytes, err := json.Marshal(resMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal clean resource %d: %w", i, err)
+		}
+
+		sig := ed25519.Sign(s.SigningKey, cleanBytes)
+		sigHex := hex.EncodeToString(sig)
+
+		annotations["praetor.io/signature"] = sigHex
+
+		finalBytes, err := json.Marshal(resMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal final resource %d: %w", i, err)
+		}
+
+		if s.Store != nil {
+			kind, _ := resMap["kind"].(string)
+			name, _ := metadata["name"].(string)
+			if kind != "" && name != "" {
+				err = s.Store.StoreResourceSpec(ctx, nodeID, kind, name, finalBytes)
+				if err != nil {
+					s.Logger.Error("Failed to store resource spec in KV", "node_id", nodeID, "kind", kind, "name", name, "error", err)
+				} else {
+					s.Logger.Info("Persisted resource spec to NATS KV store", "node_id", nodeID, "kind", kind, "name", name)
+				}
+			}
+		}
+
+		signedList = append(signedList, resMap)
+	}
+
+	return signedList, nil
+}
+
 // CompileCatalog compiles and signs the configuration catalog for a given node.
 func (s *Server) CompileCatalog(nodeID string, receivedFacts map[string]string) (string, []byte, error) {
 	reqLogger := s.Logger.With("node_id", nodeID)
@@ -64,6 +126,13 @@ func (s *Server) CompileCatalog(nodeID string, receivedFacts map[string]string) 
 		return "", nil, fmt.Errorf("failed to hydrate catalog: %w", err)
 	}
 
+	// Sign each resource individually and store in NATS KV Spec store
+	signedResources, err := s.signAndPersistCatalog(context.Background(), nodeID, hydratedResources)
+	if err != nil {
+		s.Logger.Error("Failed to sign and persist resources", "error", err)
+		return "", nil, fmt.Errorf("failed to sign and persist resources: %w", err)
+	}
+
 	// Create the final catalog structure with hydrated resources
 	finalCatalog := struct {
 		APIVersion string         `json:"apiVersion"`
@@ -78,7 +147,7 @@ func (s *Server) CompileCatalog(nodeID string, receivedFacts map[string]string) 
 		Metadata:   map[string]any{"name": "compiled-catalog"},
 		Spec: struct {
 			Resources []any `json:"resources"`
-		}{Resources: hydratedResources},
+		}{Resources: signedResources},
 	}
 
 	// Convert Go struct to JSON

@@ -19,4 +19,10 @@ type Provider interface {
 
 	// StoreAuditLog perpetually records an operator intervention.
 	StoreAuditLog(ctx context.Context, action string, targetNode string, operatorID string) error
+
+	// KRM Spec & Status Reconciliation methods
+	StoreResourceSpec(ctx context.Context, nodeID, kind, name string, data []byte) error
+	StoreResourceStatus(ctx context.Context, nodeID, kind, name string, data []byte) error
+	GetAgentSpecs(ctx context.Context, nodeID string) (map[string][]byte, error)
+	GetAgentStatuses(ctx context.Context, nodeID string) (map[string][]byte, error)
 }

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "dag.go",
         "executor.go",
+        "reconciler.go",
         "scheduler.go",
     ],
     importpath = "github.com/guilledipa/praetor/agent/engine",
@@ -15,6 +16,7 @@ go_library(
         "//pkg/broker",
         "//proto/gen/master",
         "@com_github_nats_io_nats_go//:nats_go",
+        "@com_github_nats_io_nats_go//jetstream",
         "@io_opentelemetry_go_otel//:otel",
         "@io_opentelemetry_go_otel//codes",
     ],
@@ -25,6 +27,7 @@ go_test(
     srcs = [
         "dag_test.go",
         "executor_test.go",
+        "reconciler_test.go",
         "scheduler_test.go",
     ],
     embed = [":engine"],
@@ -33,6 +36,7 @@ go_test(
         "//pkg/broker",
         "//proto/gen/master",
         "@com_github_nats_io_nats_go//:nats_go",
+        "@com_github_nats_io_nats_go//jetstream",
         "@com_github_nats_io_nats_server_v2//server",
         "@com_github_nats_io_nats_server_v2//test",
         "@com_github_stretchr_testify//assert",

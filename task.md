@@ -7,13 +7,17 @@
   - [x] Update the Agent's PKI bootstrap logic to enroll over HTTPS
   - [x] Remove gRPC dependency and ports from Master and Agent config/launch code
   - [x] Verify Phase 1 compiles and tests pass
-- [-] Phase 2: Kubernetes Resource Model (KRM) & Status Reconciliation (Deferred)
-  - [ ] Adapt schemas to support granular resource status blocks
-  - [ ] Implement NATS KV store abstractions for individual resource state synchronization
-  - [ ] Build Agent controllers to reconcile resources reacting to KV updates
-  - [ ] Verify Phase 2 compiles and tests pass
+- [x] Phase 2: Kubernetes Resource Model (KRM) & Status Reconciliation
+  - [x] Adapt schemas to support granular resource status blocks
+  - [x] Implement NATS KV store abstractions for individual resource state synchronization (PRAETOR_SPECS and PRAETOR_STATUS)
+  - [x] Build Agent controllers to reconcile resources reacting to KV updates (Watcher loop + Reconciler)
+  - [x] Verify Phase 2 compiles and tests pass
 - [x] Phase 3: Concurrent DAG Execution Scheduler
   - [x] Implement thread-safe scheduler logic with dependency satisfaction checking in `scheduler.go`
   - [x] Integrate parallel execution pool in `executor.go`
   - [x] Write unit tests for parallel and failure skip propagation
   - [x] Verify Phase 3 compiles and tests pass
+- [x] Phase 4: UX/UI Log Buffering & Diagnostic Tracing
+  - [x] Implement log buffering to avoid interleaved stdout outputs
+  - [x] Propagate exact failed root cause key through skip cascade
+  - [x] Implement praetorctl --watch mode to stream status mutations in real-time

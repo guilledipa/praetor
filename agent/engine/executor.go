@@ -1,11 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -167,7 +169,8 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 		_, resSpan := otel.Tracer("agent-engine").Start(ctx, fmt.Sprintf("Apply %s", selfKey))
 		defer resSpan.End()
 
-		resLogger := e.Logger.With("resource_type", res.Type(), "resource_id", res.ID())
+		var buf bytes.Buffer
+		bufLogger := slog.New(slog.NewJSONHandler(&buf, nil)).With("resource_type", res.Type(), "resource_id", res.ID())
 
 		report := &masterpb.ResourceReport{
 			Type:      res.Type(),
@@ -185,11 +188,15 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 				allCompliant = false
 			}
 			mu.Unlock()
+
+			if buf.Len() > 0 {
+				os.Stdout.Write(buf.Bytes())
+			}
 		}()
 
 		currentState, err := res.Get()
 		if err != nil {
-			resLogger.Error("Error getting state", "error", err)
+			bufLogger.Error("Error getting state", "error", err)
 			report.Compliant = false
 			report.Message = fmt.Sprintf("Error getting state: %v", err)
 			resSpan.SetStatus(codes.Error, report.Message)
@@ -198,7 +205,7 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 
 		isCompliant, err := res.Test(currentState)
 		if err != nil {
-			resLogger.Error("Error testing state", "error", err)
+			bufLogger.Error("Error testing state", "error", err)
 			report.Compliant = false
 			report.Message = fmt.Sprintf("Error testing state: %v", err)
 			resSpan.SetStatus(codes.Error, report.Message)
@@ -210,26 +217,26 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 			report.Compliant = false
 			if e.DryRun {
 				report.Message = "Drift detected (Simulation / Dry-Run)"
-				resLogger.Info("Simulation: Drift detected, skipping enforcement due to dry-run mode")
+				bufLogger.Info("Simulation: Drift detected, skipping enforcement due to dry-run mode")
 				return false, report.Message, nil
 			} else {
-				resLogger.Info("Drift detected. Enforcing desired state...")
+				bufLogger.Info("Drift detected. Enforcing desired state...")
 				err := res.Set()
 				if err != nil {
 					report.Message = fmt.Sprintf("Failed to enforce: %v", err)
-					resLogger.Error("Error setting state", "error", err)
+					bufLogger.Error("Error setting state", "error", err)
 					resSpan.SetStatus(codes.Error, report.Message)
 					return false, report.Message, err
 				} else {
 					report.Message = "Drift detected but successfully enforced state"
 					report.Compliant = true
-					resLogger.Info("Successfully enforced state")
+					bufLogger.Info("Successfully enforced state")
 					return true, report.Message, nil
 				}
 			}
 		}
 
-		resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
+		bufLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
 		return true, report.Message, nil
 	}
 
@@ -239,11 +246,15 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 	for name, state := range sched.states {
 		if state == StateSkipped {
 			res := sched.resMap[name]
+			msg := "Skipped due to failed parent dependencies"
+			if rReason, exists := sched.skipReasons[name]; exists {
+				msg = rReason
+			}
 			reports = append(reports, &masterpb.ResourceReport{
 				Type:      res.Type(),
 				Id:        res.ID(),
 				Compliant: false,
-				Message:   "Skipped due to failed parent dependencies",
+				Message:   msg,
 			})
 			allCompliant = false
 		}
