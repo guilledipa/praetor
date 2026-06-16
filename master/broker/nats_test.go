@@ -27,6 +27,10 @@ func (m *mockMessage) Headers() map[string][]string {
 	return nil
 }
 
+func (m *mockMessage) Respond(data []byte) error {
+	return nil
+}
+
 func TestNatsBroadcaster_handleAgentRegistration(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	b := NewNatsBroadcaster(Config{}, logger)

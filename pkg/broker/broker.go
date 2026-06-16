@@ -11,6 +11,7 @@ type Message interface {
 	Data() []byte
 	Headers() map[string][]string
 	Ack() error
+	Respond(data []byte) error
 }
 
 // Subscription represents an active pull subscription.

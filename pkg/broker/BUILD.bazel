@@ -2,7 +2,10 @@ load("@rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "broker",
-    srcs = ["broker.go"],
+    srcs = [
+        "broker.go",
+        "messages.go",
+    ],
     importpath = "github.com/guilledipa/praetor/pkg/broker",
     visibility = ["//visibility:public"],
 )

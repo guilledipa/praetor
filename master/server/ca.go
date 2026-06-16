@@ -30,32 +30,32 @@ func NewCAServer(caCert *x509.Certificate, caPrivKey interface{}, token string, 
 	}
 }
 
-func (s *CAServer) SignCSR(ctx context.Context, in *pb.SignCSRRequest) (*pb.SignCSRResponse, error) {
-	if s.BootstrapToken != "" && in.GetBootstrapToken() != s.BootstrapToken {
-		return nil, fmt.Errorf("invalid bootstrap token")
+func (s *CAServer) SignCSRData(nodeID string, token string, csrPem string) (string, error) {
+	if s.BootstrapToken != "" && token != s.BootstrapToken {
+		return "", fmt.Errorf("invalid bootstrap token")
 	}
 
-	s.Logger.Info("Received CSR signing request", "node_id", in.GetNodeId())
+	s.Logger.Info("Received CSR signing request", "node_id", nodeID)
 
 	// Parse CSR
-	block, _ := pem.Decode([]byte(in.GetCsrPem()))
+	block, _ := pem.Decode([]byte(csrPem))
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
-		return nil, fmt.Errorf("failed to decode PEM block containing CSR")
+		return "", fmt.Errorf("failed to decode PEM block containing CSR")
 	}
 
 	csr, err := x509.ParseCertificateRequest(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse CSR: %w", err)
+		return "", fmt.Errorf("failed to parse CSR: %w", err)
 	}
 	if err := csr.CheckSignature(); err != nil {
-		return nil, fmt.Errorf("invalid CSR signature: %w", err)
+		return "", fmt.Errorf("invalid CSR signature: %w", err)
 	}
 
 	// Create Certificate
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate serial number: %w", err)
+		return "", fmt.Errorf("failed to generate serial number: %w", err)
 	}
 
 	template := x509.Certificate{
@@ -70,14 +70,22 @@ func (s *CAServer) SignCSR(ctx context.Context, in *pb.SignCSRRequest) (*pb.Sign
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, &template, s.CaCert, csr.PublicKey, s.CaPrivKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create certificate: %w", err)
+		return "", fmt.Errorf("failed to create certificate: %w", err)
 	}
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
 
-	s.Logger.Info("Successfully signed CSR", "node_id", in.GetNodeId(), "serial", serialNumber.String())
+	s.Logger.Info("Successfully signed CSR", "node_id", nodeID, "serial", serialNumber.String())
 
+	return string(certPEM), nil
+}
+
+func (s *CAServer) SignCSR(ctx context.Context, in *pb.SignCSRRequest) (*pb.SignCSRResponse, error) {
+	certPem, err := s.SignCSRData(in.GetNodeId(), in.GetBootstrapToken(), in.GetCsrPem())
+	if err != nil {
+		return nil, err
+	}
 	return &pb.SignCSRResponse{
-		CertificatePem: string(certPEM),
+		CertificatePem: certPem,
 	}, nil
 }

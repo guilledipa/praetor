@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
@@ -186,19 +187,47 @@ func main() {
 		os.Exit(1)
 	}
 
-	bootCreds := credentials.NewServerTLSFromCert(&serverCert)
-	bootServer := grpc.NewServer(grpc.Creds(bootCreds), grpc.StatsHandler(otelgrpc.NewServerHandler()))
-	pb.RegisterCertificateAuthorityServer(bootServer, server.NewCAServer(caX509Cert, caTLSCert.PrivateKey, cfg.BootstrapToken, logger))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/enroll", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			NodeID         string `json:"node_id"`
+			BootstrapToken string `json:"bootstrap_token"`
+			CsrPem         string `json:"csr_pem"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
 
-	bootLis, err := net.Listen("tcp", ":50052")
-	if err != nil {
-		logger.Error("failed to listen bootstrap", "error", err)
-		os.Exit(1)
+		caSrv := server.NewCAServer(caX509Cert, caTLSCert.PrivateKey, cfg.BootstrapToken, logger)
+		certPem, err := caSrv.SignCSRData(req.NodeID, req.BootstrapToken, req.CsrPem)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"certificate_pem": certPem,
+		})
+	})
+
+	bootServer := &http.Server{
+		Addr:    ":50052",
+		Handler: mux,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{serverCert},
+		},
 	}
+
 	go func() {
-		logger.Info("Bootstrap server listening on gRPC", "port", ":50052")
-		if err := bootServer.Serve(bootLis); err != nil {
-			logger.Error("failed to serve bootstrap gRPC", "error", err)
+		logger.Info("Bootstrap HTTPS server listening", "port", ":50052")
+		if err := bootServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			logger.Error("failed to serve bootstrap HTTPS", "error", err)
 		}
 	}()
 
@@ -267,7 +296,9 @@ func main() {
 	}
 
 	cls := classifier.NewFileClassifier(classFile, rolesDir)
-	pb.RegisterConfigurationMasterServer(s, server.NewServer(signingKey, secretProv, storageProv, cls, logger))
+	masterServer := server.NewServer(signingKey, secretProv, storageProv, cls, logger)
+	pb.RegisterConfigurationMasterServer(s, masterServer)
+	b.RegisterServer(masterServer)
 	reflection.Register(s)
 
 	// Standup Operator Server
@@ -318,11 +349,13 @@ func main() {
 	logger.Info("Shutting down master gRPC servers gracefully...")
 	s.GracefulStop()
 	opServer.GracefulStop()
-	bootServer.GracefulStop()
 
-	logger.Info("Shutting down metrics server...")
+	logger.Info("Shutting down HTTP/HTTPS servers...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	if err := bootServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Bootstrap server shutdown failed", "error", err)
+	}
 	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("Metrics server shutdown failed", "error", err)
 	}

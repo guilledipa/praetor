@@ -32,6 +32,8 @@ func (m *natsMessage) Headers() map[string][]string {
 	return res
 }
 
+func (m *natsMessage) Respond(data []byte) error { return m.msg.Respond(data) }
+
 type natsSubscription struct {
 	sub *natsgo.Subscription
 }

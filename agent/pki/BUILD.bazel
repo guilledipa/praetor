@@ -5,11 +5,6 @@ go_library(
     srcs = ["bootstrap.go"],
     importpath = "github.com/guilledipa/praetor/agent/pki",
     visibility = ["//visibility:public"],
-    deps = [
-        "//proto/gen/master",
-        "@org_golang_google_grpc//:grpc",
-        "@org_golang_google_grpc//credentials",
-    ],
 )
 
 go_test(

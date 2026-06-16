@@ -2,7 +2,7 @@
 
 Praetor is a lightweight configuration management and orchestration system
 inspired by Puppet and Choria, built in Golang, using NATS JetStream for
-real-time messaging and gRPC for secure Master-Agent communication.
+real-time messaging, NATS Request-Reply for secure Master-Agent catalog exchange, and a concurrent DAG engine for resource enforcement.
 
 ## Why "Praetor"?
 
@@ -16,18 +16,10 @@ actions.
 
 The system uses a hybrid model, maintaining a pull-based security posture:
 
-*   **Configuration Plane (NATS Triggered gRPC Pull):** The Master triggers
-    agents to fetch their catalog by sending a message via NATS JetStream to a
-    node-specific subject (e.g., `agent.trigger.getCatalog.agent1`). Upon
-    receiving the trigger, the Agent initiates a gRPC call (secured with mTLS) to
-    the Master to get its catalog. Agents send system facts along with the
-    request. The catalog is compiled by the Master, hydrated with agent facts
-    using Go templates, cryptographically signed, and verified by the Agent.
-*   **Orchestration Plane (Agent-Initiated Pull Subscription to NATS
-    JetStream):** Agents establish a persistent, mTLS secured connection to NATS
-    JetStream and use *pull-based subscriptions* to listen for ad-hoc commands
-    on subjects under `commands.>`. Currently, only `commands.facts.get` is
-    implemented.
+*   **PKI Bootstrap Plane (HTTPS Enrollment):** A newly provisioned Agent node communicates with the Master's HTTPS CA Bootstrap Server over port `:50052` (or configured) exposing `/enroll` to submit a Certificate Signing Request (CSR) and enroll its mTLS certificates, bypassing the chicken-and-egg dilemma of needing TLS credentials before joining the NATS cluster.
+*   **Configuration Plane (NATS Request-Reply):** The Master triggers agents to fetch their catalog by sending a message via NATS JetStream to a node-specific subject (e.g., `agent.trigger.getCatalog.agent1`). Upon receiving the trigger, the Agent initiates a secure NATS Request-Reply call on subject `agent.catalog.request.<node_id>` to fetch the catalog. Agents send system facts along with the request. The catalog is compiled by the Master, hydrated with agent facts, cryptographically signed, and verified by the Agent.
+*   **Orchestration Plane (Agent-Initiated Pull Subscription to NATS JetStream):** Agents establish a persistent, mTLS-secured connection to NATS JetStream and use *pull-based subscriptions* to listen for ad-hoc commands on subjects under `commands.>`. Currently, only `commands.facts.get` is implemented.
+*   **Concurrent Execution Plane (DAG Scheduler):** Instead of executing resources sequentially, the Agent engine constructs an in-memory Directed Acyclic Graph (DAG) using dependencies (`requires` and `before`). A thread-safe scheduler manages a worker pool that runs independent resource branches concurrently, while propagating failures to skip dependent paths.
 
 ```dot
 digraph PraetorArchitecture {
@@ -41,35 +33,35 @@ digraph PraetorArchitecture {
 
   subgraph cluster_master {
     label = "Master Server";
-    MasterGRPC [label="gRPC Server"];
+    MasterNatsHandlers [label="NATS Request-Reply Handlers"];
     Compiler [label="Catalog Compiler / Hydrator"];
     MasterNATS [label="NATS JetStream Publisher"];
     CatalogData [label="catalog.yaml", shape=cylinder];
-    Compiler -> MasterGRPC;
+    Compiler -> MasterNatsHandlers;
     CatalogData -> Compiler;
     MasterNATS -> NATS [label=" Publish Catalog Trigger"];
   }
 
   subgraph cluster_agent {
     label = "Agent Node";
-    AgentGRPC [label="gRPC Client"];
+    AgentNatsClient [label="NATS Request-Reply Client"];
     AgentNATS [label="NATS JetStream Pull Subscriber"];
     FactCollector [label="Fact Collector"];
-    Engine [label="State Engine"];
+    Engine [label="Concurrent DAG Engine"];
     Resources [label="Resources", shape=box3d];
-    FactCollector -> AgentGRPC;
-    AgentGRPC -> Engine;
+    FactCollector -> AgentNatsClient;
+    AgentNatsClient -> Engine;
     AgentNATS -> Engine;
     Engine -> Resources;
     AgentNATS -> NATS [label=" Sub to Trigger", dir=back];
     AgentNATS -> NATS [label=" Sub to Commands", dir=back];
   }
 
-  NATS [label="NATS Server (JetStream Enabled)", shape=Msquare];
+  NATS [label="NATS Server (JetStream & TLS Enabled)", shape=Msquare];
 
   User -> MasterNATS [label=" Trigger Catalog Fetch / Request Facts"];
 
-  AgentGRPC -> MasterGRPC [label=" GetCatalog (mTLS, with Facts)", dir=back];
+  AgentNatsClient -> MasterNatsHandlers [label=" agent.catalog.request.<node_id> (NATS Request-Reply)", dir=back];
 
   MasterNATS -> NATS [label=" Publish to commands.facts.get"];
 }
@@ -77,14 +69,9 @@ digraph PraetorArchitecture {
 
 **Components:**
 
-*   **Master:** Manages configurations, receives agent facts, compiles and signs
-    catalogs, and publishes catalog update triggers (default every 15s) to NATS
-    JetStream.
-*   **Agent:** Runs on managed nodes, collects facts, listens for NATS triggers to
-    fetch catalogs via gRPC, enforces state, and listens for ad-hoc commands (like
-    `commands.facts.get`) via a NATS JetStream pull subscription.
-*   **NATS:** Message broker with JetStream enabled for persistent and reliable
-    real-time command and control, and triggering.
+*   **Master:** Manages configurations, receives agent facts, compiles and signs catalogs, runs the HTTPS enrollment server, and publishes catalog update triggers (default every 15s) to NATS JetStream.
+*   **Agent:** Runs on managed nodes, performs initial HTTPS CSR bootstrap, collects facts, listens for NATS triggers to fetch catalogs via NATS Request-Reply, and enforces state concurrently.
+*   **NATS:** Message broker with JetStream enabled for persistent and reliable real-time command and control, and triggering.
 
 ## Setup
 
@@ -224,9 +211,7 @@ curl http://localhost:8080/metrics
 
 ## Key Concepts
 
-*   **mTLS:** Mutual Transport Layer Security is used to secure all gRPC
-    communication between the Master and Agent, and also for connections to the
-    NATS server.
+*   **mTLS:** Mutual Transport Layer Security is used to secure connections to the NATS server, while HTTPS JSON is used for certificate enrollment.
 *   **NATS JetStream:** The persistence layer of NATS, used for the
     Orchestration Plane and for triggering catalog fetches.
 *   **Fact Management:** Agents collect system facts (e.g., OS, hostname, CPU, memory
@@ -254,7 +239,7 @@ Praetor follows a modular go workspace approach:
     *   Currently houses the `broker/` package for pluggable messaging (e.g., NATS). 
     *   Future shared utilities (like logging, TLS helpers, or auth libraries) should be placed here.
 *   **`schema/`**: Shared structs and validation logic for the configuration catalog to ensure both Master and Agent agree on resource definitions.
-*   **`proto/`**: gRPC interface definitions and the resulting generated code.
+*   **`proto/`**: Legacy gRPC interface definitions (obsolete, retained for reference).
 
 ## Developing New Fact Providers
 

@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -8,18 +9,16 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	masterpb "github.com/guilledipa/praetor/proto/gen/master"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 type BootstrapConfig struct {
@@ -49,18 +48,6 @@ func RunBootstrapWorkflow(cfg BootstrapConfig) error {
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	tlsConfig := &tls.Config{RootCAs: caCertPool}
-	creds := credentials.NewTLS(tlsConfig)
-
-	bootstrapAddr := strings.Split(cfg.MasterGRPCAddress, ":")[0] + ":50052"
-	conn, err := grpc.Dial(bootstrapAddr, grpc.WithTransportCredentials(creds))
-	if err != nil {
-		return fmt.Errorf("failed to dial bootstrap server: %w", err)
-	}
-	defer conn.Close()
-
-	client := masterpb.NewCertificateAuthorityClient(conn)
-
 	// 2. Generate Key Pair
 	priv, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
@@ -79,18 +66,60 @@ func RunBootstrapWorkflow(cfg BootstrapConfig) error {
 
 	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrBytes})
 
-	// 3. Send CSR
-	req := &masterpb.SignCSRRequest{
-		NodeId:         cfg.NodeID,
+	// 3. Send CSR via HTTPS Request-Reply
+	enrollReq := struct {
+		NodeID         string `json:"node_id"`
+		BootstrapToken string `json:"bootstrap_token"`
+		CsrPem         string `json:"csr_pem"`
+	}{
+		NodeID:         cfg.NodeID,
 		BootstrapToken: cfg.BootstrapToken,
 		CsrPem:         string(csrPEM),
 	}
 
+	jsonBytes, err := json.Marshal(enrollReq)
+	if err != nil {
+		return err
+	}
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs: caCertPool,
+		},
+	}
+	httpClient := &http.Client{
+		Transport: tr,
+		Timeout:   10 * time.Second,
+	}
+
+	masterHost := strings.Split(cfg.MasterGRPCAddress, ":")[0]
+	enrollURL := fmt.Sprintf("https://%s:50052/enroll", masterHost)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resp, err := client.SignCSR(ctx, req)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", enrollURL, bytes.NewBuffer(jsonBytes))
 	if err != nil {
-		return fmt.Errorf("failed to sign CSR via gRPC: %w", err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make bootstrap HTTPS request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("bootstrap enrollment rejected (status %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var enrollResp struct {
+		CertificatePem string `json:"certificate_pem"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&enrollResp); err != nil {
+		return fmt.Errorf("failed to decode bootstrap response: %w", err)
 	}
 
 	// 4. Write back cert & key
@@ -105,7 +134,7 @@ func RunBootstrapWorkflow(cfg BootstrapConfig) error {
 	if err := os.WriteFile(cfg.ClientKeyPath, privPEM, 0600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(cfg.ClientCertPath, []byte(resp.GetCertificatePem()), 0644); err != nil {
+	if err := os.WriteFile(cfg.ClientCertPath, []byte(enrollResp.CertificatePem), 0644); err != nil {
 		return err
 	}
 

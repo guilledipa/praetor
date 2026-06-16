@@ -36,15 +36,9 @@ func NewServer(signingKey ed25519.PrivateKey, secretProv secrets.Provider, store
 	}
 }
 
-// GetCatalog implements master.ConfigurationMasterServer
-func (s *Server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.GetCatalogResponse, error) {
-	ctx, span := otel.Tracer("master-server").Start(ctx, "GetCatalog")
-	defer span.End()
-
-	nodeID := in.GetNodeId()
-	receivedFacts := in.GetFacts()
+// CompileCatalog compiles and signs the configuration catalog for a given node.
+func (s *Server) CompileCatalog(nodeID string, receivedFacts map[string]string) (string, []byte, error) {
 	reqLogger := s.Logger.With("node_id", nodeID)
-	reqLogger.Info("Received GetCatalog request", "facts", receivedFacts)
 
 	// 1. Evaluate Classifications
 	var rawResources []json.RawMessage
@@ -60,14 +54,14 @@ func (s *Server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 
 	if err != nil {
 		reqLogger.Error("Error evaluating classifier", "error", err)
-		return nil, fmt.Errorf("classifier evaluation failed: %w", err)
+		return "", nil, fmt.Errorf("classifier evaluation failed: %w", err)
 	}
 
 	// 2. Hydrate catalog with secrets and facts
 	hydratedResources, err := catalog.HydrateCatalog(rawResources, receivedFacts, s.SecretProv)
 	if err != nil {
 		s.Logger.Error("Failed to hydrate catalog", "error", err)
-		return nil, fmt.Errorf("failed to hydrate catalog: %w", err)
+		return "", nil, fmt.Errorf("failed to hydrate catalog: %w", err)
 	}
 
 	// Create the final catalog structure with hydrated resources
@@ -91,13 +85,26 @@ func (s *Server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 	jsonBytes, err := json.Marshal(finalCatalog)
 	if err != nil {
 		reqLogger.Error("Error marshalling to JSON", "error", err)
-		return nil, fmt.Errorf("failed to marshal catalog to JSON: %w", err)
+		return "", nil, fmt.Errorf("failed to marshal catalog to JSON: %w", err)
 	}
 	catalogContent := string(jsonBytes)
 
 	// Sign the JSON content
 	signature := ed25519.Sign(s.SigningKey, []byte(catalogContent))
 	reqLogger.Info("Catalog signed", "algorithm", "ed25519")
+
+	return catalogContent, signature, nil
+}
+
+// GetCatalog implements master.ConfigurationMasterServer
+func (s *Server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.GetCatalogResponse, error) {
+	ctx, span := otel.Tracer("master-server").Start(ctx, "GetCatalog")
+	defer span.End()
+
+	catalogContent, signature, err := s.CompileCatalog(in.GetNodeId(), in.GetFacts())
+	if err != nil {
+		return nil, err
+	}
 
 	return &pb.GetCatalogResponse{
 		Catalog: &pb.Catalog{
@@ -109,20 +116,28 @@ func (s *Server) GetCatalog(ctx context.Context, in *pb.GetCatalogRequest) (*pb.
 	}, nil
 }
 
-// ReportState implements master.ConfigurationMasterServer
-func (s *Server) ReportState(ctx context.Context, req *pb.ReportStateRequest) (*pb.ReportStateResponse, error) {
-	s.Logger.Info("Received state report from agent", "node_id", req.NodeId, "resource_count", len(req.Resources))
+// ProcessReport stores all resource reports in the state storage.
+func (s *Server) ProcessReport(ctx context.Context, nodeID string, resources []*pb.ResourceReport, isCompliant bool, timestamp int64) error {
+	s.Logger.Info("Processing state report from agent", "node_id", nodeID, "resource_count", len(resources))
 
-	for _, rep := range req.Resources {
+	for _, rep := range resources {
 		storeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := s.Store.StoreReport(storeCtx, req.NodeId, rep)
+		err := s.Store.StoreReport(storeCtx, nodeID, rep)
 		cancel()
 		if err != nil {
-			s.Logger.Error("Failed to persist report state into JetStream", "node_id", req.NodeId, "resource_id", rep.GetId(), "error", err)
+			s.Logger.Error("Failed to persist report state into JetStream", "node_id", nodeID, "resource_id", rep.GetId(), "error", err)
 		} else {
-			s.Logger.Debug("Resource run persisted", "node_id", req.NodeId, "type", rep.GetType(), "id", rep.GetId(), "compliant", rep.GetCompliant())
+			s.Logger.Debug("Resource run persisted", "node_id", nodeID, "type", rep.GetType(), "id", rep.GetId(), "compliant", rep.GetCompliant())
 		}
 	}
+	return nil
+}
 
+// ReportState implements master.ConfigurationMasterServer
+func (s *Server) ReportState(ctx context.Context, req *pb.ReportStateRequest) (*pb.ReportStateResponse, error) {
+	err := s.ProcessReport(ctx, req.NodeId, req.Resources, req.IsCompliant, req.Timestamp)
+	if err != nil {
+		return nil, err
+	}
 	return &pb.ReportStateResponse{Acknowledged: true}, nil
 }

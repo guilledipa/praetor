@@ -4,14 +4,17 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/guilledipa/praetor/master/server"
 	pkgbroker "github.com/guilledipa/praetor/pkg/broker"
 	"github.com/guilledipa/praetor/pkg/broker/nats"
+	pb "github.com/guilledipa/praetor/proto/gen/master"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -30,12 +33,102 @@ type NatsBroadcaster struct {
 	logger       *slog.Logger
 	activeAgents sync.Map
 	broker       pkgbroker.Broker
+	srv          *server.Server
 }
 
 func NewNatsBroadcaster(cfg Config, logger *slog.Logger) *NatsBroadcaster {
 	return &NatsBroadcaster{
 		cfg:    cfg,
 		logger: logger,
+	}
+}
+
+func (n *NatsBroadcaster) RegisterServer(srv *server.Server) {
+	n.srv = srv
+
+	// Subscribe to catalog requests via Request-Reply
+	err := n.broker.Subscribe("agent.catalog.request.*", n.handleNatsCatalogRequest)
+	if err != nil {
+		n.logger.Error("Failed to subscribe to agent.catalog.request.*", "error", err)
+	}
+
+	// Subscribe to state reports via Request-Reply
+	err = n.broker.Subscribe("agent.state.report.*", n.handleNatsStateReport)
+	if err != nil {
+		n.logger.Error("Failed to subscribe to agent.state.report.*", "error", err)
+	}
+}
+
+func (n *NatsBroadcaster) handleNatsCatalogRequest(msg pkgbroker.Message) {
+	var req pkgbroker.CatalogRequest
+	if err := json.Unmarshal(msg.Data(), &req); err != nil {
+		n.logger.Error("Failed to unmarshal NATS catalog request", "error", err)
+		return
+	}
+
+	n.logger.Info("Received NATS catalog request", "node_id", req.NodeID)
+
+	catalogContent, signature, err := n.srv.CompileCatalog(req.NodeID, req.Facts)
+	if err != nil {
+		n.logger.Error("Failed to compile catalog for NATS request", "node_id", req.NodeID, "error", err)
+		return
+	}
+
+	resp := pkgbroker.CatalogResponse{
+		Catalog:            catalogContent,
+		Signature:          signature,
+		SignatureAlgorithm: "ed25519",
+	}
+
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		n.logger.Error("Failed to marshal NATS catalog response", "error", err)
+		return
+	}
+
+	if err := msg.Respond(respBytes); err != nil {
+		n.logger.Error("Failed to send NATS catalog response", "error", err)
+	}
+}
+
+func (n *NatsBroadcaster) handleNatsStateReport(msg pkgbroker.Message) {
+	var req pkgbroker.StateReportRequest
+	if err := json.Unmarshal(msg.Data(), &req); err != nil {
+		n.logger.Error("Failed to unmarshal NATS state report request", "error", err)
+		return
+	}
+
+	n.logger.Info("Received NATS state report", "node_id", req.NodeID, "resource_count", len(req.Resources))
+
+	// Re-map shared types to protobuf representation for compatibility with srv.Store
+	var pbResources []*pb.ResourceReport
+	for _, r := range req.Resources {
+		pbResources = append(pbResources, &pb.ResourceReport{
+			Type:      r.Type,
+			Id:        r.Id,
+			Compliant: r.Compliant,
+			Message:   r.Message,
+		})
+	}
+
+	err := n.srv.ProcessReport(context.Background(), req.NodeID, pbResources, req.IsCompliant, req.Timestamp)
+	if err != nil {
+		n.logger.Error("Failed to process NATS state report", "node_id", req.NodeID, "error", err)
+		return
+	}
+
+	resp := pkgbroker.StateReportResponse{
+		Acknowledged: true,
+	}
+
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		n.logger.Error("Failed to marshal NATS state report response", "error", err)
+		return
+	}
+
+	if err := msg.Respond(respBytes); err != nil {
+		n.logger.Error("Failed to send NATS state report response", "error", err)
 	}
 }
 

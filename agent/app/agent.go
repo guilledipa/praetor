@@ -10,13 +10,9 @@ import (
 
 	"github.com/guilledipa/praetor/agent/engine"
 	"github.com/guilledipa/praetor/agent/pki"
-	masterpb "github.com/guilledipa/praetor/proto/gen/master"
 	"github.com/nats-io/nats.go"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 type Config struct {
@@ -55,10 +51,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to setup NATS TLS: %w", err)
 	}
 
-	masterTLSConfig, err := pki.SetupTLS(cfg.MasterClientCert, cfg.MasterClientKey, cfg.MasterRootCA)
-	if err != nil {
-		return fmt.Errorf("failed to setup Master gRPC TLS: %w", err)
-	}
+
 
 	nc, err := connectNATS(cfg.NatsURL, natsTLSConfig)
 	if err != nil {
@@ -91,12 +84,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	}
 
-	masterClient, masterConn, err := connectMasterGRPC(cfg, masterTLSConfig)
-	if err != nil {
-		return fmt.Errorf("failed to connect to master gRPC: %w", err)
-	}
-	defer masterConn.Close()
-	logger.Info("Connected to Master gRPC server", "address", cfg.MasterGRPCAddress)
+
 
 	masterPubKey, err := pki.LoadPublicKey("../master/certs/master_signing.pub")
 	if err != nil {
@@ -112,7 +100,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		exec := &engine.Executor{
 			NodeID:       cfg.NodeID,
-			MasterClient: masterClient,
+			NatsConn:     nc,
 			MasterPubKey: masterPubKey,
 			Logger:       logger,
 			DryRun:       cfg.DryRun,
@@ -150,37 +138,7 @@ func connectNATS(natsURL string, tlsConfig *tls.Config) (*nats.Conn, error) {
 	return nil, fmt.Errorf("failed to connect to NATS after %d attempts: %w", maxRetries, err)
 }
 
-func connectMasterGRPC(cfg Config, tlsConfig *tls.Config) (masterpb.ConfigurationMasterClient, *grpc.ClientConn, error) {
-	creds := credentials.NewTLS(tlsConfig)
-	
-	dialOpts := []grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
-		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-	}
 
-	var conn *grpc.ClientConn
-	var err error
-	maxRetries := 10
-
-	for i := 0; i < maxRetries; i++ {
-		// Use a blocking dial with a short timeout per attempt
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		conn, err = grpc.DialContext(ctx, cfg.MasterGRPCAddress, append(dialOpts, grpc.WithBlock())...)
-		cancel()
-
-		if err == nil {
-			return masterpb.NewConfigurationMasterClient(conn), conn, nil
-		}
-		
-		backoff := time.Duration(1<<i) * time.Second
-		if backoff > 30*time.Second {
-			backoff = 30 * time.Second
-		}
-		time.Sleep(backoff)
-	}
-
-	return nil, nil, fmt.Errorf("failed to dial master gRPC server after %d attempts: %w", maxRetries, err)
-}
 
 type natsMessageHandler func(msg *nats.Msg)
 

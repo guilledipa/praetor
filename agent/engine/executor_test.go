@@ -10,9 +10,12 @@ import (
 	"testing"
 
 	"github.com/guilledipa/praetor/agent/resources"
+	pkgbroker "github.com/guilledipa/praetor/pkg/broker"
 	masterpb "github.com/guilledipa/praetor/proto/gen/master"
+	natsserverv2 "github.com/nats-io/nats-server/v2/server"
+	natsserver "github.com/nats-io/nats-server/v2/test"
+	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
-	"google.golang.org/grpc"
 )
 
 type mockMasterClient struct {
@@ -23,26 +26,17 @@ type mockMasterClient struct {
 	lastReport    *masterpb.ReportStateRequest
 }
 
-func (m *mockMasterClient) GetCatalog(ctx context.Context, in *masterpb.GetCatalogRequest, opts ...grpc.CallOption) (*masterpb.GetCatalogResponse, error) {
-	catalogContent := m.customCatalog
-	if catalogContent == "" {
-		catalogContent = `{"apiVersion":"praetor.io/v1alpha1","kind":"Catalog","metadata":{"name":"compiled-catalog"},"spec":{"resources":[]}}`
+func startTestNats(t *testing.T) (*nats.Conn, *natsserverv2.Server) {
+	opts := natsserver.DefaultTestOptions
+	opts.Port = -1
+	s := natsserver.RunServer(&opts)
+
+	nc, err := nats.Connect(s.ClientURL())
+	if err != nil {
+		s.Shutdown()
+		t.Fatalf("failed to connect to test NATS: %v", err)
 	}
-	signature := ed25519.Sign(m.privKey, []byte(catalogContent))
-
-	return &masterpb.GetCatalogResponse{
-		Catalog: &masterpb.Catalog{
-			Content: catalogContent,
-			Format:  "json",
-		},
-		Signature:          signature,
-		SignatureAlgorithm: "ed25519",
-	}, nil
-}
-
-func (m *mockMasterClient) ReportState(ctx context.Context, in *masterpb.ReportStateRequest, opts ...grpc.CallOption) (*masterpb.ReportStateResponse, error) {
-	m.lastReport = in
-	return &masterpb.ReportStateResponse{Acknowledged: true}, nil
+	return nc, s
 }
 
 // TestResource implements resources.Resource for test verification
@@ -93,17 +87,36 @@ func TestFetchAndApplyCatalog(t *testing.T) {
 		t.Fatalf("Failed to generate keys: %v", err)
 	}
 
-	mockClient := &mockMasterClient{
-		pubKey:  pubKey,
-		privKey: privKey,
-		t:       t,
-	}
+	nc, ns := startTestNats(t)
+	defer ns.Shutdown()
+	defer nc.Close()
+
+	_, err = nc.Subscribe("agent.catalog.request.*", func(m *nats.Msg) {
+		catalogContent := `{"apiVersion":"praetor.io/v1alpha1","kind":"Catalog","metadata":{"name":"compiled-catalog"},"spec":{"resources":[]}}`
+		signature := ed25519.Sign(privKey, []byte(catalogContent))
+
+		resp := pkgbroker.CatalogResponse{
+			Catalog:            catalogContent,
+			Signature:          signature,
+			SignatureAlgorithm: "ed25519",
+		}
+		respBytes, _ := json.Marshal(resp)
+		m.Respond(respBytes)
+	})
+	assert.NoError(t, err)
+
+	_, err = nc.Subscribe("agent.state.report.*", func(m *nats.Msg) {
+		resp := pkgbroker.StateReportResponse{Acknowledged: true}
+		respBytes, _ := json.Marshal(resp)
+		m.Respond(respBytes)
+	})
+	assert.NoError(t, err)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	executor := &Executor{
 		NodeID:       "test-node",
-		MasterClient: mockClient,
+		NatsConn:     nc,
 		MasterPubKey: pubKey,
 		Logger:       logger,
 	}
@@ -121,6 +134,10 @@ func TestFetchAndApplyCatalog_DryRun(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	t.Run("with dry-run true", func(t *testing.T) {
+		nc, ns := startTestNats(t)
+		defer ns.Shutdown()
+		defer nc.Close()
+
 		mockClient := &mockMasterClient{
 			pubKey:  pubKey,
 			privKey: privKey,
@@ -141,9 +158,49 @@ func TestFetchAndApplyCatalog_DryRun(t *testing.T) {
 			}`,
 		}
 
+		_, err = nc.Subscribe("agent.catalog.request.*", func(m *nats.Msg) {
+			catalogContent := mockClient.customCatalog
+			signature := ed25519.Sign(privKey, []byte(catalogContent))
+
+			resp := pkgbroker.CatalogResponse{
+				Catalog:            catalogContent,
+				Signature:          signature,
+				SignatureAlgorithm: "ed25519",
+			}
+			respBytes, _ := json.Marshal(resp)
+			m.Respond(respBytes)
+		})
+		assert.NoError(t, err)
+
+		_, err = nc.Subscribe("agent.state.report.*", func(m *nats.Msg) {
+			var req pkgbroker.StateReportRequest
+			_ = json.Unmarshal(m.Data, &req)
+
+			var pbResources []*masterpb.ResourceReport
+			for _, r := range req.Resources {
+				pbResources = append(pbResources, &masterpb.ResourceReport{
+					Type:      r.Type,
+					Id:        r.Id,
+					Compliant: r.Compliant,
+					Message:   r.Message,
+				})
+			}
+			mockClient.lastReport = &masterpb.ReportStateRequest{
+				NodeId:      req.NodeID,
+				Resources:   pbResources,
+				IsCompliant: req.IsCompliant,
+				Timestamp:   req.Timestamp,
+			}
+
+			resp := pkgbroker.StateReportResponse{Acknowledged: true}
+			respBytes, _ := json.Marshal(resp)
+			m.Respond(respBytes)
+		})
+		assert.NoError(t, err)
+
 		executor := &Executor{
 			NodeID:       "test-node",
-			MasterClient: mockClient,
+			NatsConn:     nc,
 			MasterPubKey: pubKey,
 			Logger:       logger,
 			DryRun:       true,
@@ -161,6 +218,10 @@ func TestFetchAndApplyCatalog_DryRun(t *testing.T) {
 	})
 
 	t.Run("with dry-run false", func(t *testing.T) {
+		nc, ns := startTestNats(t)
+		defer ns.Shutdown()
+		defer nc.Close()
+
 		mockClient := &mockMasterClient{
 			pubKey:  pubKey,
 			privKey: privKey,
@@ -181,9 +242,49 @@ func TestFetchAndApplyCatalog_DryRun(t *testing.T) {
 			}`,
 		}
 
+		_, err = nc.Subscribe("agent.catalog.request.*", func(m *nats.Msg) {
+			catalogContent := mockClient.customCatalog
+			signature := ed25519.Sign(privKey, []byte(catalogContent))
+
+			resp := pkgbroker.CatalogResponse{
+				Catalog:            catalogContent,
+				Signature:          signature,
+				SignatureAlgorithm: "ed25519",
+			}
+			respBytes, _ := json.Marshal(resp)
+			m.Respond(respBytes)
+		})
+		assert.NoError(t, err)
+
+		_, err = nc.Subscribe("agent.state.report.*", func(m *nats.Msg) {
+			var req pkgbroker.StateReportRequest
+			_ = json.Unmarshal(m.Data, &req)
+
+			var pbResources []*masterpb.ResourceReport
+			for _, r := range req.Resources {
+				pbResources = append(pbResources, &masterpb.ResourceReport{
+					Type:      r.Type,
+					Id:        r.Id,
+					Compliant: r.Compliant,
+					Message:   r.Message,
+				})
+			}
+			mockClient.lastReport = &masterpb.ReportStateRequest{
+				NodeId:      req.NodeID,
+				Resources:   pbResources,
+				IsCompliant: req.IsCompliant,
+				Timestamp:   req.Timestamp,
+			}
+
+			resp := pkgbroker.StateReportResponse{Acknowledged: true}
+			respBytes, _ := json.Marshal(resp)
+			m.Respond(respBytes)
+		})
+		assert.NoError(t, err)
+
 		executor := &Executor{
 			NodeID:       "test-node",
-			MasterClient: mockClient,
+			NatsConn:     nc,
 			MasterPubKey: pubKey,
 			Logger:       logger,
 			DryRun:       false,

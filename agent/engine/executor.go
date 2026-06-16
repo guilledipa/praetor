@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/guilledipa/praetor/agent/facts"
 	"github.com/guilledipa/praetor/agent/resources"
+	pkgbroker "github.com/guilledipa/praetor/pkg/broker"
 	masterpb "github.com/guilledipa/praetor/proto/gen/master"
+	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 )
@@ -34,7 +37,7 @@ type CatalogResource struct {
 
 type Executor struct {
 	NodeID       string
-	MasterClient masterpb.ConfigurationMasterClient
+	NatsConn     *nats.Conn
 	MasterPubKey ed25519.PublicKey
 	Logger       *slog.Logger
 	DryRun       bool
@@ -64,16 +67,36 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 	}
 	e.Logger.Info("Collected facts", "facts", stringFacts)
 
-	resp, err := e.MasterClient.GetCatalog(ctx, &masterpb.GetCatalogRequest{NodeId: e.NodeID, Facts: stringFacts})
+	req := pkgbroker.CatalogRequest{
+		NodeID: e.NodeID,
+		Facts:  stringFacts,
+	}
+	reqBytes, err := json.Marshal(req)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, "Failed to get catalog")
-		e.Logger.Error("Error fetching catalog from master", "error", err)
+		span.SetStatus(codes.Error, "Failed to marshal catalog request")
+		e.Logger.Error("Failed to marshal catalog request", "error", err)
 		return
 	}
 
-	catalogContent := resp.GetCatalog().GetContent()
-	signature := resp.GetSignature()
+	natsResp, err := e.NatsConn.RequestWithContext(ctx, "agent.catalog.request."+e.NodeID, reqBytes)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to get catalog via NATS")
+		e.Logger.Error("Error fetching catalog from master via NATS", "error", err)
+		return
+	}
+
+	var catResp pkgbroker.CatalogResponse
+	if err := json.Unmarshal(natsResp.Data, &catResp); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to unmarshal NATS catalog response")
+		e.Logger.Error("Error unmarshalling catalog response", "error", err)
+		return
+	}
+
+	catalogContent := catResp.Catalog
+	signature := catResp.Signature
 
 	// Verify signature
 	if len(signature) == 0 {
@@ -129,20 +152,22 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 		unsortedResources = append(unsortedResources, res)
 	}
 
-	// 2. Compute Directed Acyclic Graph Topo Sort
-	sortedResources, err := buildDAG(unsortedResources)
+	// 2. Initialize and Run the Scheduler
+	sched, err := newScheduler(unsortedResources, e.Logger)
 	if err != nil {
-		e.Logger.Error("DAG Resolution Failed", "error", err)
+		e.Logger.Error("Failed to initialize DAG scheduler", "error", err)
 		return
 	}
-	e.Logger.Info("DAG built successfully", "nodes", len(sortedResources))
 
-	// 3. Linearly Enforce the Sorted DAG
-	failedNodes := make(map[string]bool)
-	for _, res := range sortedResources {
+	var mu sync.Mutex
+	concurrency := 4 // Default concurrency level
+
+	applyFunc := func(ctx context.Context, res resources.Resource) (bool, string, error) {
 		selfKey := fmt.Sprintf("%s[%s]", res.Type(), res.ID())
-
 		_, resSpan := otel.Tracer("agent-engine").Start(ctx, fmt.Sprintf("Apply %s", selfKey))
+		defer resSpan.End()
+
+		resLogger := e.Logger.With("resource_type", res.Type(), "resource_id", res.ID())
 
 		report := &masterpb.ResourceReport{
 			Type:      res.Type(),
@@ -151,40 +176,24 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 			Message:   "Resource is compliant",
 		}
 
-		resLogger := e.Logger.With("resource_type", res.Type(), "resource_id", res.ID())
+		driftDetected := false
 
-		// Pre-Execution Dependency Check
-		skip := false
-		skipReason := ""
-		allDeps := append(res.Requires(), res.Before()...)
-		for _, dep := range allDeps {
-			depKey := fmt.Sprintf("%s[%s]", dep.Kind, dep.Name)
-			if failedNodes[depKey] {
-				skip = true
-				skipReason = fmt.Sprintf("Skipped: Dependency %s failed", depKey)
-				break
-			}
-		}
-
-		if skip {
-			resLogger.Warn("Skipping resource due to failed dependency", "reason", skipReason)
-			report.Compliant = false
-			report.Message = skipReason
-			failedNodes[selfKey] = true
+		defer func() {
+			mu.Lock()
 			reports = append(reports, report)
-			allCompliant = false
-			continue
-		}
+			if !report.Compliant || driftDetected {
+				allCompliant = false
+			}
+			mu.Unlock()
+		}()
 
 		currentState, err := res.Get()
 		if err != nil {
 			resLogger.Error("Error getting state", "error", err)
 			report.Compliant = false
 			report.Message = fmt.Sprintf("Error getting state: %v", err)
-			reports = append(reports, report)
-			allCompliant = false
-			failedNodes[selfKey] = true
-			continue
+			resSpan.SetStatus(codes.Error, report.Message)
+			return false, report.Message, err
 		}
 
 		isCompliant, err := res.Test(currentState)
@@ -192,54 +201,89 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 			resLogger.Error("Error testing state", "error", err)
 			report.Compliant = false
 			report.Message = fmt.Sprintf("Error testing state: %v", err)
-			reports = append(reports, report)
-			allCompliant = false
-			failedNodes[selfKey] = true
-			continue
+			resSpan.SetStatus(codes.Error, report.Message)
+			return false, report.Message, err
 		}
 
 		if !isCompliant {
-			allCompliant = false
+			driftDetected = true
 			report.Compliant = false
 			if e.DryRun {
 				report.Message = "Drift detected (Simulation / Dry-Run)"
 				resLogger.Info("Simulation: Drift detected, skipping enforcement due to dry-run mode")
+				return false, report.Message, nil
 			} else {
 				resLogger.Info("Drift detected. Enforcing desired state...")
 				err := res.Set()
 				if err != nil {
 					report.Message = fmt.Sprintf("Failed to enforce: %v", err)
 					resLogger.Error("Error setting state", "error", err)
-					failedNodes[selfKey] = true
+					resSpan.SetStatus(codes.Error, report.Message)
+					return false, report.Message, err
 				} else {
 					report.Message = "Drift detected but successfully enforced state"
 					report.Compliant = true
 					resLogger.Info("Successfully enforced state")
+					return true, report.Message, nil
 				}
 			}
-		} else {
-			resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
 		}
-		
-		if !report.Compliant {
-			resSpan.SetStatus(codes.Error, report.Message)
+
+		resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())
+		return true, report.Message, nil
+	}
+
+	sched.run(ctx, concurrency, applyFunc)
+
+	// Append skipped reports dynamically
+	for name, state := range sched.states {
+		if state == StateSkipped {
+			res := sched.resMap[name]
+			reports = append(reports, &masterpb.ResourceReport{
+				Type:      res.Type(),
+				Id:        res.ID(),
+				Compliant: false,
+				Message:   "Skipped due to failed parent dependencies",
+			})
+			allCompliant = false
 		}
-		resSpan.End()
-		reports = append(reports, report)
 	}
 
 	e.Logger.Info("--- Configuration Check Finished ---")
 
-	// Send the state report
-	_, err = e.MasterClient.ReportState(ctx, &masterpb.ReportStateRequest{
-		NodeId:      e.NodeID,
-		Resources:   reports,
+	// Send the state report via NATS Request-Reply
+	var reportsList []*pkgbroker.ResourceReport
+	for _, r := range reports {
+		reportsList = append(reportsList, &pkgbroker.ResourceReport{
+			Type:      r.Type,
+			Id:        r.Id,
+			Compliant: r.Compliant,
+			Message:   r.Message,
+		})
+	}
+
+	reportReq := pkgbroker.StateReportRequest{
+		NodeID:      e.NodeID,
+		Resources:   reportsList,
 		IsCompliant: allCompliant,
 		Timestamp:   time.Now().Unix(),
-	})
+	}
+
+	reportBytes, err := json.Marshal(reportReq)
 	if err != nil {
-		e.Logger.Error("Failed to report state to master", "error", err)
+		e.Logger.Error("Failed to marshal state report request", "error", err)
+		return
+	}
+
+	reportResp, err := e.NatsConn.RequestWithContext(ctx, "agent.state.report."+e.NodeID, reportBytes)
+	if err != nil {
+		e.Logger.Error("Failed to report state to master via NATS", "error", err)
 	} else {
-		e.Logger.Info("Successfully reported state to master")
+		var stateResp pkgbroker.StateReportResponse
+		if err := json.Unmarshal(reportResp.Data, &stateResp); err == nil && stateResp.Acknowledged {
+			e.Logger.Info("Successfully reported state to master via NATS")
+		} else {
+			e.Logger.Error("NATS state report acknowledgment failed")
+		}
 	}
 }
