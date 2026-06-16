@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "catalog",
+    srcs = ["hydrator.go"],
+    importpath = "github.com/guilledipa/praetor/master/catalog",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/secrets",
+        "//schema",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+    ],
+)
+
+go_test(
+    name = "catalog_test",
+    srcs = ["hydrator_test.go"],
+    embed = [":catalog"],
+)

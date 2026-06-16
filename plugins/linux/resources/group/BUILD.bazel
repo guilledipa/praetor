@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "group",
+    srcs = ["group.go"],
+    importpath = "github.com/guilledipa/praetor/plugins/linux/resources/group",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//plugins/linux/resources",
+        "//schema",
+    ],
+)
+
+go_test(
+    name = "group_test",
+    srcs = ["group_test.go"],
+    embed = [":group"],
+    deps = ["//plugins/linux/resources"],
+)

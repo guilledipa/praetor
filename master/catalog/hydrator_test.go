@@ -26,7 +26,8 @@ func TestHydrateCatalog(t *testing.T) {
 		"metadata": {"name": "test"},
 		"spec": {
 			"path": "/tmp/test.txt",
-			"content": "OS IS {{ .facts.os }} AND PASS IS {{ secret \"default\" \"db\" \"pw\" }}"
+			"content": "OS IS {{ .facts.os }} AND PASS IS {{ secret \"default\" \"db\" \"pw\" }}",
+			"ensure": "present"
 		}
 	}`)
 

@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "agent_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/guilledipa/praetor/agent/cmd/agent",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//agent/app",
+        "//agent/facts/core",
+        "//agent/pki",
+        "//agent/plugin",
+        "//pkg/telemetry",
+        "@com_github_spf13_viper//:viper",
+    ],
+)
+
+go_binary(
+    name = "agent",
+    embed = [":agent_lib"],
+    visibility = ["//visibility:public"],
+)

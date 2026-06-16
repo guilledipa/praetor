@@ -7,4 +7,6 @@ use (
 	./master
 	./pkg
 	./plugins/linux
+	./proto
+	./schema
 )

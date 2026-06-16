@@ -1,0 +1,13 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "plugin",
+    srcs = ["interface.go"],
+    importpath = "github.com/guilledipa/praetor/pkg/plugin",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//proto/gen/plugin",
+        "@com_github_hashicorp_go_plugin//:go-plugin",
+        "@org_golang_google_grpc//:grpc",
+    ],
+)

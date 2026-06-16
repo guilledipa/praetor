@@ -32,9 +32,65 @@ func HydrateCatalog(rawResources []json.RawMessage, facts map[string]string, sec
 			var res schema.File
 			if err = yaml.Unmarshal(resData, &res); err == nil {
 				err = hydrateStruct(&res.Spec, facts, secProv)
+				if err == nil {
+					err = res.Validate()
+				}
 				hydratedResource = res
 			}
-		// Add other resource kinds here as they are defined in schema/
+		case "Package":
+			var res schema.Package
+			if err = yaml.Unmarshal(resData, &res); err == nil {
+				err = hydrateStruct(&res.Spec, facts, secProv)
+				if err == nil {
+					err = res.Validate()
+				}
+				hydratedResource = res
+			}
+		case "Service":
+			var res schema.Service
+			if err = yaml.Unmarshal(resData, &res); err == nil {
+				err = hydrateStruct(&res.Spec, facts, secProv)
+				if err == nil {
+					err = res.Validate()
+				}
+				hydratedResource = res
+			}
+		case "Exec":
+			var res schema.Exec
+			if err = yaml.Unmarshal(resData, &res); err == nil {
+				err = hydrateStruct(&res.Spec, facts, secProv)
+				if err == nil {
+					err = res.Validate()
+				}
+				hydratedResource = res
+			}
+		case "User":
+			var res schema.User
+			if err = yaml.Unmarshal(resData, &res); err == nil {
+				err = hydrateStruct(&res.Spec, facts, secProv)
+				if err == nil {
+					err = res.Validate()
+				}
+				hydratedResource = res
+			}
+		case "Group":
+			var res schema.Group
+			if err = yaml.Unmarshal(resData, &res); err == nil {
+				err = hydrateStruct(&res.Spec, facts, secProv)
+				if err == nil {
+					err = res.Validate()
+				}
+				hydratedResource = res
+			}
+		case "Cron":
+			var res schema.Cron
+			if err = yaml.Unmarshal(resData, &res); err == nil {
+				err = hydrateStruct(&res.Spec, facts, secProv)
+				if err == nil {
+					err = res.Validate()
+				}
+				hydratedResource = res
+			}
 		default:
 			// For unknown kinds, try to unmarshal to a generic map and hydrate strings
 			var genericRes map[string]any

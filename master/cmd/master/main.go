@@ -12,6 +12,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -291,17 +293,39 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsSrv := &http.Server{Addr: ":8080"}
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		logger.Info("Metrics server listening on", "port", ":8080")
-		if err := http.ListenAndServe(":8080", nil); err != nil {
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Metrics server failed", "error", err)
 		}
 	}()
 
-	logger.Info("Master server listening on gRPC", "port", ":50051", "tls", "mTLS")
-	if err := s.Serve(lis); err != nil {
-		logger.Error("failed to serve gRPC", "error", err)
-		os.Exit(1)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		logger.Info("Master server listening on gRPC", "port", ":50051", "tls", "mTLS")
+		if err := s.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+			logger.Error("failed to serve gRPC", "error", err)
+		}
+	}()
+
+	sig := <-sigChan
+	logger.Info("Received shutdown signal", "signal", sig.String())
+
+	logger.Info("Shutting down master gRPC servers gracefully...")
+	s.GracefulStop()
+	opServer.GracefulStop()
+	bootServer.GracefulStop()
+
+	logger.Info("Shutting down metrics server...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Metrics server shutdown failed", "error", err)
 	}
+
+	logger.Info("Master shutdown complete.")
 }

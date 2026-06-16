@@ -31,6 +31,7 @@ type Config struct {
 	NodeID              string `mapstructure:"node_id"`
 	LogLevel            string `mapstructure:"log_level"`
 	AgentBootstrapToken string `mapstructure:"agent_bootstrap_token"`
+	DryRun              bool   `mapstructure:"dry_run"`
 }
 
 type Agent struct {
@@ -45,7 +46,7 @@ func NewAgent(cfg Config, logger *slog.Logger) *Agent {
 	}
 }
 
-func (a *Agent) Run() error {
+func (a *Agent) Run(ctx context.Context) error {
 	cfg := a.Config
 	logger := a.Logger
 
@@ -104,7 +105,7 @@ func (a *Agent) Run() error {
 
 	triggerSubject := fmt.Sprintf("agent.trigger.getCatalog.%s", cfg.NodeID)
 	
-	go startJetStreamPullSubscriber(js, cfg.NodeID, triggerSubject, "AGENT_TRIGGERS", logger, func(msg *nats.Msg) {
+	go startJetStreamPullSubscriber(ctx, js, cfg.NodeID, triggerSubject, "AGENT_TRIGGERS", logger, func(msg *nats.Msg) {
 		logger.Info("Received catalog trigger", "subject", msg.Subject)
 		
 		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
@@ -114,12 +115,15 @@ func (a *Agent) Run() error {
 			MasterClient: masterClient,
 			MasterPubKey: masterPubKey,
 			Logger:       logger,
+			DryRun:       cfg.DryRun,
 		}
 		exec.FetchAndApplyCatalog(ctx)
 	})
 
 	logger.Info("Agent setup complete, waiting for triggers and commands.")
-	select {}
+	<-ctx.Done()
+	logger.Info("Shutting down agent...")
+	return nil
 }
 
 func connectNATS(natsURL string, tlsConfig *tls.Config) (*nats.Conn, error) {
@@ -180,7 +184,7 @@ func connectMasterGRPC(cfg Config, tlsConfig *tls.Config) (masterpb.Configuratio
 
 type natsMessageHandler func(msg *nats.Msg)
 
-func startJetStreamPullSubscriber(js nats.JetStreamContext, nodeID, subject, streamName string, logger *slog.Logger, handler natsMessageHandler) {
+func startJetStreamPullSubscriber(ctx context.Context, js nats.JetStreamContext, nodeID, subject, streamName string, logger *slog.Logger, handler natsMessageHandler) {
 	consumerName := fmt.Sprintf("%s-%s-consumer", nodeID, strings.ReplaceAll(subject, ".", "-"))
 	if subject == "commands.>" {
 		consumerName = fmt.Sprintf("%s-commands-consumer", nodeID)
@@ -194,13 +198,25 @@ func startJetStreamPullSubscriber(js nats.JetStreamContext, nodeID, subject, str
 	logger.Info("Created pull subscription", "subject", subject, "consumer", consumerName, "stream", streamName)
 
 	for {
-		msgs, err := sub.Fetch(1, nats.MaxWait(10*time.Second))
+		select {
+		case <-ctx.Done():
+			logger.Info("Stopping subscriber due to context cancellation", "subject", subject)
+			return
+		default:
+		}
+
+		msgs, err := sub.Fetch(1, nats.MaxWait(1*time.Second))
 		if err != nil {
 			if err == nats.ErrTimeout {
 				continue
 			}
 			logger.Error("Error fetching messages from JetStream", "error", err, "subject", subject)
-			time.Sleep(5 * time.Second) // Backoff on error
+			
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
 			continue
 		}
 

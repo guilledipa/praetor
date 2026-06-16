@@ -1,0 +1,1 @@
+# Empty BUILD file to make Bazel recognize this directory as a package

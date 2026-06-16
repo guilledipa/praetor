@@ -1,0 +1,33 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "server",
+    srcs = [
+        "ca.go",
+        "grpc.go",
+        "operator.go",
+    ],
+    importpath = "github.com/guilledipa/praetor/master/server",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//master/catalog",
+        "//master/classifier",
+        "//pkg/secrets",
+        "//pkg/storage",
+        "//proto/gen/master",
+        "@com_github_nats_io_nats_go//:nats_go",
+        "@io_opentelemetry_go_otel//:otel",
+        "@org_golang_google_grpc//credentials",
+        "@org_golang_google_grpc//peer",
+    ],
+)
+
+go_test(
+    name = "server_test",
+    srcs = [
+        "ca_test.go",
+        "grpc_test.go",
+    ],
+    embed = [":server"],
+    deps = ["//proto/gen/master"],
+)

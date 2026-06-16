@@ -1,0 +1,33 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "engine",
+    srcs = [
+        "dag.go",
+        "executor.go",
+    ],
+    importpath = "github.com/guilledipa/praetor/agent/engine",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//agent/facts",
+        "//agent/resources",
+        "//proto/gen/master",
+        "@io_opentelemetry_go_otel//:otel",
+        "@io_opentelemetry_go_otel//codes",
+    ],
+)
+
+go_test(
+    name = "engine_test",
+    srcs = [
+        "dag_test.go",
+        "executor_test.go",
+    ],
+    embed = [":engine"],
+    deps = [
+        "//agent/resources",
+        "//proto/gen/master",
+        "@com_github_stretchr_testify//assert",
+        "@org_golang_google_grpc//:grpc",
+    ],
+)

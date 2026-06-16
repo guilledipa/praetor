@@ -1,0 +1,35 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "master_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/guilledipa/praetor/master/cmd/master",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//master/broker",
+        "//master/classifier",
+        "//master/gitops",
+        "//master/server",
+        "//pkg/pki",
+        "//pkg/secrets",
+        "//pkg/secrets/local",
+        "//pkg/secrets/vault",
+        "//pkg/storage",
+        "//pkg/storage/natsjs",
+        "//pkg/telemetry",
+        "//proto/gen/master",
+        "@com_github_nats_io_nats_go//:nats_go",
+        "@com_github_prometheus_client_golang//prometheus/promhttp",
+        "@com_github_spf13_viper//:viper",
+        "@io_opentelemetry_go_contrib_instrumentation_google_golang_org_grpc_otelgrpc//:otelgrpc",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//credentials",
+        "@org_golang_google_grpc//reflection",
+    ],
+)
+
+go_binary(
+    name = "master",
+    embed = [":master_lib"],
+    visibility = ["//visibility:public"],
+)

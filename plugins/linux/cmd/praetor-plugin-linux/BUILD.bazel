@@ -1,0 +1,26 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "praetor-plugin-linux_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/guilledipa/praetor/plugins/linux/cmd/praetor-plugin-linux",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//agent/resources",
+        "//pkg/plugin",
+        "//plugins/linux/resources/cron",
+        "//plugins/linux/resources/exec",
+        "//plugins/linux/resources/file",
+        "//plugins/linux/resources/group",
+        "//plugins/linux/resources/pkg",
+        "//plugins/linux/resources/svc",
+        "//plugins/linux/resources/user",
+        "@com_github_hashicorp_go_plugin//:go-plugin",
+    ],
+)
+
+go_binary(
+    name = "praetor-plugin-linux",
+    embed = [":praetor-plugin-linux_lib"],
+    visibility = ["//visibility:public"],
+)

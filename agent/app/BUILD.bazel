@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "app",
+    srcs = ["agent.go"],
+    importpath = "github.com/guilledipa/praetor/agent/app",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//agent/engine",
+        "//agent/pki",
+        "//proto/gen/master",
+        "@com_github_nats_io_nats_go//:nats_go",
+        "@io_opentelemetry_go_contrib_instrumentation_google_golang_org_grpc_otelgrpc//:otelgrpc",
+        "@io_opentelemetry_go_otel//:otel",
+        "@io_opentelemetry_go_otel//propagation",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//credentials",
+    ],
+)
+
+go_test(
+    name = "app_test",
+    srcs = ["agent_test.go"],
+    embed = [":app"],
+)

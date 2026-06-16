@@ -1,0 +1,13 @@
+load("@rules_go//go:def.bzl", "go_test")
+
+# Empty BUILD file to make Bazel recognize this directory as a package
+
+go_test(
+    name = "e2e_test",
+    srcs = ["cluster_test.go"],
+    deps = [
+        "@com_github_stretchr_testify//require",
+        "@com_github_testcontainers_testcontainers_go//:testcontainers-go",
+        "@com_github_testcontainers_testcontainers_go//wait",
+    ],
+)

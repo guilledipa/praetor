@@ -1,7 +1,6 @@
 package group
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"

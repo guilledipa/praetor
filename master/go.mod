@@ -5,6 +5,7 @@ go 1.25.0
 replace github.com/guilledipa/praetor/proto/gen => ../proto/gen
 
 require (
+	github.com/go-git/go-git/v5 v5.17.0
 	github.com/guilledipa/praetor/pkg v0.0.0-00010101000000-000000000000
 	github.com/guilledipa/praetor/proto/gen v0.0.0-INCOMPATIBLE
 	github.com/guilledipa/praetor/schema v0.0.0-INCOMPATIBLE
@@ -33,7 +34,6 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.8.0 // indirect
-	github.com/go-git/go-git/v5 v5.17.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

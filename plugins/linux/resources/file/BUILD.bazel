@@ -1,0 +1,12 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "file",
+    srcs = ["file.go"],
+    importpath = "github.com/guilledipa/praetor/plugins/linux/resources/file",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//plugins/linux/resources",
+        "//schema",
+    ],
+)

@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "praetorctl_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/guilledipa/praetor/cli/cmd/praetorctl",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//proto/gen/master",
+        "@com_github_charmbracelet_bubbles//list",
+        "@com_github_charmbracelet_bubbletea//:bubbletea",
+        "@com_github_charmbracelet_lipgloss//:lipgloss",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//credentials",
+    ],
+)
+
+go_binary(
+    name = "praetorctl",
+    embed = [":praetorctl_lib"],
+    visibility = ["//visibility:public"],
+)

@@ -19,3 +19,6 @@ master/master
 .vscode/
 .DS_Store
 *.swp
+
+# Bazel
+bazel-*

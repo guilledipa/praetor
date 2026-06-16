@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+# Empty BUILD file to make Bazel recognize this directory as a package
+
+go_library(
+    name = "schema",
+    srcs = [
+        "common.go",
+        "cron.go",
+        "exec.go",
+        "file.go",
+        "group.go",
+        "package.go",
+        "service.go",
+        "user.go",
+    ],
+    importpath = "github.com/guilledipa/praetor/schema",
+    visibility = ["//visibility:public"],
+    deps = ["@com_github_go_playground_validator_v10//:validator"],
+)

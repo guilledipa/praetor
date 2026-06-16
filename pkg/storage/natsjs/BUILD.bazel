@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "natsjs",
+    srcs = ["nats.go"],
+    importpath = "github.com/guilledipa/praetor/pkg/storage/natsjs",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/storage",
+        "//proto/gen/master",
+        "@com_github_nats_io_nats_go//:nats_go",
+        "@com_github_nats_io_nats_go//jetstream",
+    ],
+)
+
+go_test(
+    name = "natsjs_test",
+    srcs = ["nats_test.go"],
+    embed = [":natsjs"],
+    deps = [
+        "//proto/gen/master",
+        "@com_github_nats_io_nats_go//jetstream",
+    ],
+)

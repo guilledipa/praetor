@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "pki",
+    srcs = ["bootstrap.go"],
+    importpath = "github.com/guilledipa/praetor/agent/pki",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//proto/gen/master",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//credentials",
+    ],
+)
+
+go_test(
+    name = "pki_test",
+    srcs = ["bootstrap_test.go"],
+    embed = [":pki"],
+)

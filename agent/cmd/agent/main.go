@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/guilledipa/praetor/agent/app"
 	"github.com/guilledipa/praetor/agent/pki"
@@ -16,6 +19,9 @@ import (
 )
 
 func main() {
+	dryRun := flag.Bool("dry-run", false, "Enable dry-run mode (simulate changes without applying them)")
+	flag.Parse()
+
 	viper.SetEnvPrefix("PRAETOR_AGENT")
 	viper.AutomaticEnv()
 	viper.SetConfigFile("/etc/praetor/agent.yaml")
@@ -27,6 +33,10 @@ func main() {
 	var cfg app.Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		log.Fatalf("Failed to marshal config: %v", err)
+	}
+
+	if *dryRun {
+		cfg.DryRun = true
 	}
 
 	var logLevel slog.Level
@@ -76,8 +86,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	agentApp := app.NewAgent(cfg, logger)
-	if err := agentApp.Run(); err != nil {
+	if err := agentApp.Run(ctx); err != nil {
 		logger.Error("Agent failed to run", "error", err)
 		os.Exit(1)
 	}

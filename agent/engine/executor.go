@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/guilledipa/praetor/agent/facts"
@@ -36,9 +37,18 @@ type Executor struct {
 	MasterClient masterpb.ConfigurationMasterClient
 	MasterPubKey ed25519.PublicKey
 	Logger       *slog.Logger
+	DryRun       bool
 }
 
+var isRunning atomic.Bool
+
 func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
+	if !isRunning.CompareAndSwap(false, true) {
+		e.Logger.Warn("Configuration check already in progress, skipping trigger")
+		return
+	}
+	defer isRunning.Store(false)
+
 	ctx, span := otel.Tracer("agent-engine").Start(ctx, "FetchAndApplyCatalog")
 	defer span.End()
 
@@ -191,16 +201,21 @@ func (e *Executor) FetchAndApplyCatalog(ctx context.Context) {
 		if !isCompliant {
 			allCompliant = false
 			report.Compliant = false
-			resLogger.Info("Drift detected. Enforcing desired state...")
-			err := res.Set()
-			if err != nil {
-				report.Message = fmt.Sprintf("Failed to enforce: %v", err)
-				resLogger.Error("Error setting state", "error", err)
-				failedNodes[selfKey] = true
+			if e.DryRun {
+				report.Message = "Drift detected (Simulation / Dry-Run)"
+				resLogger.Info("Simulation: Drift detected, skipping enforcement due to dry-run mode")
 			} else {
-				report.Message = "Drift detected but successfully enforced state"
-				report.Compliant = true
-				resLogger.Info("Successfully enforced state")
+				resLogger.Info("Drift detected. Enforcing desired state...")
+				err := res.Set()
+				if err != nil {
+					report.Message = fmt.Sprintf("Failed to enforce: %v", err)
+					resLogger.Error("Error setting state", "error", err)
+					failedNodes[selfKey] = true
+				} else {
+					report.Message = "Drift detected but successfully enforced state"
+					report.Compliant = true
+					resLogger.Info("Successfully enforced state")
+				}
 			}
 		} else {
 			resLogger.Info("Resource is compliant", "type", res.Type(), "id", res.ID())

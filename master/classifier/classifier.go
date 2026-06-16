@@ -71,27 +71,27 @@ func (c *FileClassifier) Evaluate(nodeID string, facts map[string]string) ([]jso
 	for role := range matchedRoles {
 		roleFile, err := ioutil.ReadFile(fmt.Sprintf("%s/%s.yaml", c.rolesDir, role))
 		if err != nil {
-			continue // Or log it if log is passed
+			return nil, fmt.Errorf("failed to read role file for role '%s': %w", role, err)
 		}
 
 		var catalogContainer map[string]any
 		if err := yaml.Unmarshal(roleFile, &catalogContainer); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to unmarshal role file for role '%s': %w", role, err)
 		}
 
 		spec, ok := catalogContainer["spec"].(map[string]any)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("role '%s' catalog container missing 'spec' map", role)
 		}
 		resources, ok := spec["resources"].([]any)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("role '%s' catalog container 'spec' missing 'resources' list", role)
 		}
 
 		for _, res := range resources {
 			raw, err := json.Marshal(res)
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("failed to marshal resource to JSON for role '%s': %w", role, err)
 			}
 			rawResources = append(rawResources, raw)
 		}

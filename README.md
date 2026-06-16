@@ -139,7 +139,9 @@ digraph PraetorArchitecture {
 
 ## Core Resources
 
-Praetor ships with a core set of native Linux resources needed to deploy most applications out-of-the-box. These are compiled directly into the agent for maximum performance and reliability on base Linux distributions:
+Praetor ships with a core set of native Linux resources needed to deploy most applications out-of-the-box. These are compiled directly into the agent for maximum performance and reliability on base Linux distributions.
+
+For a comprehensive schema specification, parameters list, validation details, and YAML configuration examples for each resource, refer to the [Supported Resources Reference Guide](file:///Users/guilledipa/Documents/praetor/RESOURCES.md).
 
 *   **File:** Manage file contents, existence, permissions, and owners. 
 *   **Package:** Manage OS packages using an intelligent, pluggable provider that detects `apt`, `yum`, or `apk` automatically.
@@ -148,6 +150,7 @@ Praetor ships with a core set of native Linux resources needed to deploy most ap
 *   **User:** Manage deep configuration of Linux user accounts, mapping primary/secondary groups, homes, shells, and structural UIDs natively via `useradd`/`usermod`.
 *   **Group:** Establish and enforce structural groups directly against `/etc/group` binaries (`groupadd`/`groupmod`).
 *   **Cron:** Isolate, inject, and enforce scheduled cron jobs identically inside a user's `crontab -l` isolated via explicit UUID tagging, protecting manual job edits.
+
 
 ## Catalog Schema & Hydration
 
@@ -368,9 +371,46 @@ To add support for a new resource type (e.g., `crontab`):
 #### 6. Update `agent/go.mod`
 Run `go mod tidy` or preferably use `make tidy` at the project root.
 
-## Local Development (Build System)
+## Local Development & Build Systems
 
-Praetor uses a natively managed **Go Workspace** (`go.work`) linked with a root **Makefile** to orchestrate its multi-module architecture effortlessly.
+Praetor supports both the enterprise-grade **Bazel** build system and a native Go workspace with a root **Makefile**.
+
+### Option A: Bazel Build System (Recommended)
+
+#### Why Bazel?
+We added **Bazel** to provide:
+*   **Hermetic & Reproducible Builds**: Bazel executes compiler actions in isolated sandboxes. If a build passes on one machine, it is guaranteed to pass on all other development and CI machines identically.
+*   **Intelligent Caching**: It caches test results and compiler outputs at a fine-grained action level. If you change a file in `master/`, running tests for `agent/` will instantly hit the cache.
+*   **Seamless Dependency Management**: Via Bzlmod (`MODULE.bazel`), Bazel tracks direct/indirect external dependencies and locks the precise Go SDK version cleanly.
+
+#### Using Bazel:
+1.  **Prerequisites**: Make sure `bazelisk` is installed (it auto-manages the Bazel version pinned in `.bazelversion`):
+    ```bash
+    brew install bazelisk
+    ```
+2.  **Generate/Succeed BUILD Files (Gazelle)**:
+    If you add new Go files or imports, run Gazelle to automatically update all `BUILD.bazel` targets:
+    ```bash
+    bazel run //:gazelle
+    bazel mod tidy
+    ```
+3.  **Run All Tests**:
+    ```bash
+    bazel test //...
+    ```
+4.  **Build Binary Targets**:
+    ```bash
+    bazel build //master/cmd/master:master
+    bazel build //agent/cmd/agent:agent
+    bazel build //plugins/linux/cmd/praetor-plugin-linux:praetor-plugin-linux
+    bazel build //cli/cmd/praetorctl:praetorctl
+    ```
+
+---
+
+### Option B: Makefile & Go Workspaces
+
+Praetor also maintains a natively managed **Go Workspace** (`go.work`) linked with a root **Makefile** as a lightweight alternative:
 
 Using `go.work` enables IDEs (like VSCode or GoLand) to instantly resolve cross-module imports (e.g., when the `agent` heavily references the `pkg` module).
 
@@ -379,7 +419,7 @@ You do not need to individually compile components. The project root provides a 
 - **`make all`**: Compiles Protobufs, executes all tests, and builds binaries.
 - **`make build`**: Statically compiles both the `agent` and `master` binaries sequentially and exports them into `./bin/`.
 - **`make test`**: Runs the entire matrix of table-driven testing suites simultaneously across `agent/`, `master/`, and `pkg/`.
-- **`make tidy`**: Globally cleans up dependency trees on all 4 isolated `go.mod` files.
+- **`make tidy`**: Globally cleans up dependency trees on all 5 isolated `go.mod` files.
 
 #### Proto Generation
 

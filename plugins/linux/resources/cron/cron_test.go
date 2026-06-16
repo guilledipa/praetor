@@ -1,7 +1,6 @@
 package cron
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"

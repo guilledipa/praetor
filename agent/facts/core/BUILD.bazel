@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "core",
+    srcs = ["core.go"],
+    importpath = "github.com/guilledipa/praetor/agent/facts/core",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//agent/facts",
+        "@com_github_shirou_gopsutil_v3//cpu",
+        "@com_github_shirou_gopsutil_v3//host",
+        "@com_github_shirou_gopsutil_v3//net",
+    ],
+)
